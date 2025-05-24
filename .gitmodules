@@ -7,3 +7,5 @@
 [submodule "matchers/gim"]
 	path = matchers/gim
 	url = https://github.com/xuelunshen/gim.git
+
+## Check the GIM Matcher weights!
