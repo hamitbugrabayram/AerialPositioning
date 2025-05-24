@@ -1,5 +1,5 @@
 matcher_type: 'gim' 
-device: 'cpu'              
+device: 'cuda'              
 
 data_paths:
   query_dir: 'data/query'
