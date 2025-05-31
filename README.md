@@ -54,7 +54,7 @@ Download the necessary weights for the specific matcher(s) you intend to use (es
 
 Place the weights in an accessible location (e.g., within the respective matchers/<matcher_name>/weights directory. However, this might be ignored by the submodule's gitignore - a central weights/ folder outside matchers might be better).
 
-Update the paths in config.yaml under the matcher_weights section accordingly (e.g., gim_weights_path).
+Update the paths in config.yaml under the matcher_weights section accordingly (e.g., gim_weights_path, loftr_weights_path).
 
 ### 6. Run Benchmark
 
