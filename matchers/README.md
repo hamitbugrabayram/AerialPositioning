@@ -2,6 +2,6 @@
 
 The following matchers are planned to be added to this project:
 
-- [ ] LoFTR
+- [X] LoFTR
 - [ ] MINIMA
 - [ ] XFeat
