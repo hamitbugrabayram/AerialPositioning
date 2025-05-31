@@ -15,6 +15,7 @@ try:
     from lightgluePipeline import LightGluePipeline
     from supergluePipeline import SuperGluePipeline
     from gimPipeline import GimPipeline
+    from loftrPipeline import LoFTRPipeline 
 except ImportError as e: print(f"ERROR: Import pipeline failed: {e}"); sys.exit(1)
 
 
@@ -46,8 +47,16 @@ def run_benchmark(config_path: str):
 
     output_dir = Path(paths['output_dir']); output_dir.mkdir(parents=True, exist_ok=True)
     run_timestamp = time.strftime("%Y%m%d-%H%M%S"); preprocess_status = "preprocessed" if preprocess_config.get('enabled', False) else "original"
-    gim_model_suffix = f"_{matcher_weights_config.get('gim_model_type', 'unknown')}" if matcher_type == 'gim' else ""
-    run_output_dir = output_dir / f"{matcher_type}{gim_model_suffix}_{preprocess_status}_{run_timestamp}"; run_output_dir.mkdir(exist_ok=True)
+    
+    model_specific_suffix = ""
+    if matcher_type == 'gim':
+        model_specific_suffix = f"_{matcher_weights_config.get('gim_model_type', 'unknown')}"
+    elif matcher_type == 'loftr': 
+        loftr_weights_name = Path(matcher_weights_config.get('loftr_weights_path', 'unknown.ckpt')).stem
+        model_specific_suffix = f"_{loftr_weights_name}"
+
+
+    run_output_dir = output_dir / f"{matcher_type}{model_specific_suffix}_{preprocess_status}_{run_timestamp}"; run_output_dir.mkdir(exist_ok=True)
     print(f"Output will be saved to: {run_output_dir}")
 
     query_processor = None
@@ -75,6 +84,7 @@ def run_benchmark(config_path: str):
         if matcher_type == 'lightglue': pipeline = LightGluePipeline(config)
         elif matcher_type == 'superglue': pipeline = SuperGluePipeline(config)
         elif matcher_type == 'gim': pipeline = GimPipeline(config)
+        elif matcher_type == 'loftr': pipeline = LoFTRPipeline(config)
         else: raise ValueError(f"Unsupported matcher_type: {matcher_type}")
     except Exception as e: print(f"ERROR: Failed pipeline init: {e}"); import traceback; traceback.print_exc(); sys.exit(1)
 
@@ -156,7 +166,18 @@ def run_benchmark(config_path: str):
             localization_successful_this_map = False
 
             if ransac_successful and homography is not None:
-                norm_center = calculate_location_and_error(query_row.to_dict(), map_row.to_dict(), processed_query_shape, map_shape, homography)
+                current_query_shape_for_calc = processed_query_shape
+                if query_processor is None and current_query_shape_for_calc is None:
+                    temp_q_img = cv2.imread(str(query_path_for_matcher))
+                    if temp_q_img is not None: current_query_shape_for_calc = temp_q_img.shape
+                    del temp_q_img
+                
+                if current_query_shape_for_calc is not None and len(current_query_shape_for_calc) >= 2:
+                     norm_center = calculate_location_and_error(query_row.to_dict(), map_row.to_dict(), current_query_shape_for_calc, map_shape, homography)
+                else:
+                    print(f"  Warning: Could not determine query shape for localization calculation. Skipping for this map.")
+
+
                 if norm_center is not None:
                      pred_lat, pred_lon = calculate_predicted_gps(map_row.to_dict(), norm_center)
                      if pred_lat is not None and best_match_for_query['gt_latitude'] is not None:
@@ -167,9 +188,16 @@ def run_benchmark(config_path: str):
             txt_output_path = query_results_dir / f"{output_prefix}_results.txt"
             try:
                 with open(txt_output_path, 'w') as f:
-                    gim_type_str = f" ({matcher_weights_config.get('gim_model_type', 'unknown')})" if matcher_type == 'gim' else ""
+                    # <<< MODIFIED to include LoFTR in output
+                    current_matcher_name = matcher_type.upper()
+                    if matcher_type == 'gim':
+                        current_matcher_name += f" ({matcher_weights_config.get('gim_model_type', 'unknown')})"
+                    elif matcher_type == 'loftr':
+                        loftr_w_name = Path(matcher_weights_config.get('loftr_weights_path', 'N/A')).name
+                        current_matcher_name += f" ({loftr_w_name})"
+                    # >>>
                     f.write(f"--- Match Results: {Path(query_filename).name} vs {Path(map_filename).name} ---\n")
-                    f.write(f"Matcher: {matcher_type.upper()}{gim_type_str}\n"); f.write(f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    f.write(f"Matcher: {current_matcher_name}\n"); f.write(f"Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
                     f.write(f"Preprocessing: {preprocess_status.capitalize()} ({preprocessing_applied_steps or 'None'})\n"); f.write("-" * 30 + "\n")
                     f.write(f"Query Image Used: {query_path_for_matcher.name}\n"); f.write(f"Map Image: {map_filename}\n"); f.write("-" * 30 + "\n")
                     f.write("MATCHING & RANSAC:\n"); f.write(f"  Time Spent: {match_time:.4f} s\n"); f.write(f"  Putative Matches: {num_total}\n")
@@ -247,8 +275,15 @@ def run_benchmark(config_path: str):
     stats_output_path = run_output_dir / "benchmark_stats.txt"
     try:
         with open(stats_output_path, 'w') as f:
-            gim_type_str = f" ({matcher_weights_config.get('gim_model_type', 'unknown')})" if matcher_type == 'gim' else ""
-            f.write("--- Overall Benchmark Statistics ---\n"); f.write(f"Matcher: {matcher_type.upper()}{gim_type_str}\n")
+            # <<< MODIFIED to include LoFTR in output
+            current_matcher_name = matcher_type.upper()
+            if matcher_type == 'gim':
+                current_matcher_name += f" ({matcher_weights_config.get('gim_model_type', 'unknown')})"
+            elif matcher_type == 'loftr':
+                loftr_w_name = Path(matcher_weights_config.get('loftr_weights_path', 'N/A')).name
+                current_matcher_name += f" ({loftr_w_name})"
+            # >>>
+            f.write("--- Overall Benchmark Statistics ---\n"); f.write(f"Matcher: {current_matcher_name}\n")
             f.write(f"Timestamp: {run_timestamp}\n"); f.write(f"Preprocessing: {preprocess_status.capitalize()} ({preprocess_config.get('steps', []) or 'None'})\n"); f.write("-" * 30 + "\n")
             f.write(f"Total Queries: {num_queries}\n"); f.write(f"Queries Processed: {num_processed}\n"); f.write(f"Successful Localizations: {num_successful}\n")
             f.write(f"Success Rate (vs Processed): {success_rate:.2f}%\n"); f.write(f"Min Inliers Required: {min_inliers_success}\n")

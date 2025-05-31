@@ -7,5 +7,7 @@
 [submodule "matchers/gim"]
 	path = matchers/gim
 	url = https://github.com/xuelunshen/gim.git
-
+[submodule "matchers/LoFTR"]
+	path = matchers/LoFTR
+	url = https://github.com/zju3dv/LoFTR.git
 ## Check the GIM Matcher weights!

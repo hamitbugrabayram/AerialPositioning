@@ -1,5 +1,5 @@
-matcher_type: 'gim' 
-device: 'cuda'              
+matcher_type: 'loftr' # 'gim', 'loftr', 'lightglue' or 'superglue'
+device: 'cuda'        
 
 data_paths:
   query_dir: 'data/query'
@@ -10,24 +10,24 @@ data_paths:
 
 preprocessing:
   enabled: true 
-  steps: ['resize', 'warp']
-  resize_target: [1024]
+  steps: ['resize', 'warp'] 
+  resize_target: [1024] 
   target_gimbal_yaw: 0.0    
   target_gimbal_pitch: -90.0 
   target_gimbal_roll: 0.0
 
-camera_model:
+camera_model: 
   focal_length: 4.5           
   resolution_width: 3040      
   resolution_height: 4056     
   hfov_deg: 82.9              
 
 matcher_weights:
-  lightglue_features: 'superpoint'
-  superglue_weights: 'outdoor'
-  gim_model_type: 'lightglue'
+  lightglue_features: 'superpoint' # 'superpoint' or 'disk'
+  superglue_weights: 'outdoor' # 'indoor' or 'outdoor'
+  gim_model_type: 'lightglue' # 'dkm', 'roma', 'loftr' or 'lightglue'
   gim_weights_path: 'matchers/gim/weights/gim_lightglue_100h.ckpt' 
-
+  loftr_weights_path: 'matchers/LoFTR/weights/outdoor_ds.ckpt' 
 matcher_params:
   lightglue:
     extractor_max_keypoints: 2048
@@ -39,16 +39,20 @@ matcher_params:
     superglue_match_threshold: 0.2
     superglue_sinkhorn_iterations: 20
   gim:
-    resize_max: null
+    resize_max: null 
     dfactor: 8
     dkm_h: 672
     dkm_w: 896
     roma_img_size: 672
     gim_lightglue_max_keypoints: 2048
     gim_lightglue_filter_threshold: 0.1
+  loftr: 
+    resize: [640, 480] 
+    temp_bug_fix: True 
+    match_thr: 0.2 
 
 ransac_params:
-  method: 'RANSAC'
+  method: 'RANSAC' # 'RANSAC' or 'USAC_MAGSAC'
   reproj_threshold: 8.0
   confidence: 0.999
   max_iter: 10000
