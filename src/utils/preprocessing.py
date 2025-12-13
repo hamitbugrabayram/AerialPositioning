@@ -1,74 +1,84 @@
 """
-Image preprocessing utilities, including resizing, camera modeling,
-and perspective warping for query images.
+Image preprocessing utilities for query image transformation.
+
+This module provides tools for:
+- Image resizing with aspect ratio preservation
+- Camera intrinsics modeling
+- Perspective warping for nadir view simulation
 """
 
 import math
-from typing import List, Tuple, Dict, Optional, Union, Any
 from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-def process_resize(w: int, h: int, resize: Union[int, List[int]]) -> Tuple[int, int]:
+
+def compute_resize_dimensions(
+    width: int,
+    height: int,
+    resize_target: Union[int, List[int]]
+) -> Tuple[int, int]:
     """
-    Calculates new dimensions based on resize parameter.
+    Calculate new dimensions based on resize parameters.
 
     Args:
-        w: Original width.
-        h: Original height.
-        resize: Target size parameter:
-                - int > 0: Target maximum dimension.
-                - List/Tuple [W, H]: Target exact dimensions.
-                - List/Tuple [S]: Target maximum dimension.
-                - -1 or invalid: Keep original size.
+        width: Original image width.
+        height: Original image height.
+        resize_target: Target size specification:
+            - int > 0: Maximum dimension constraint
+            - [W, H]: Exact target dimensions
+            - [S]: Maximum dimension constraint
+            - -1 or invalid: Keep original size
 
     Returns:
-        Tuple (new_width, new_height).
+        Tuple of (new_width, new_height).
     """
-    if h <= 0 or w <= 0: return w, h 
-    max_dim = max(h, w)
+    if height <= 0 or width <= 0:
+        return width, height
 
-    if isinstance(resize, int) and resize > 0:
-        scale = resize / max_dim
-        w_new, h_new = int(round(w * scale)), int(round(h * scale))
-    elif isinstance(resize, (list, tuple)) and len(resize) == 2:
-        w_new, h_new = int(resize[0]), int(resize[1]) 
-    elif isinstance(resize, (list, tuple)) and len(resize) == 1 and resize[0] > 0:
-        scale = resize[0] / max_dim
-        w_new, h_new = int(round(w*scale)), int(round(h*scale))
-    else: #
-        w_new, h_new = w, h
+    max_dim = max(height, width)
 
+    if isinstance(resize_target, int) and resize_target > 0:
+        scale = resize_target / max_dim
+        new_width = int(round(width * scale))
+        new_height = int(round(height * scale))
+    elif isinstance(resize_target, (list, tuple)) and len(resize_target) == 2:
+        new_width, new_height = int(resize_target[0]), int(resize_target[1])
+    elif isinstance(resize_target, (list, tuple)) and len(resize_target) == 1 and resize_target[0] > 0:
+        scale = resize_target[0] / max_dim
+        new_width = int(round(width * scale))
+        new_height = int(round(height * scale))
+    else:
+        new_width, new_height = width, height
 
-    w_new = max(1, w_new)
-    h_new = max(1, h_new)
-    return w_new, h_new
+    # Ensure minimum dimension of 1
+    return max(1, new_width), max(1, new_height)
+
 
 @dataclass
 class CameraModel:
     """
-    Represents the intrinsic parameters of a camera. Calculates focal length
-    in pixels based on horizontal field of view (HFOV). Assumes principal
-    point is the image center.
+    Camera intrinsic parameters model.
+
+    Calculates focal length in pixels from horizontal field of view (HFOV)
+    and assumes principal point at image center.
 
     Attributes:
-        focal_length (float): Focal length in millimeters (mm).
-        resolution_width (int): Sensor/image width in pixels.
-        resolution_height (int): Sensor/image height in pixels.
-        hfov_deg (float): Horizontal Field of View in degrees.
-        hfov_rad (float): HFOV in radians (calculated).
-        aspect_ratio (float): Width / Height (calculated).
-        focal_length_px (float): Approximate focal length in pixels (calculated).
-        principal_point_x (float): X-coordinate of the principal point (calculated center).
-        principal_point_y (float): Y-coordinate of the principal point (calculated center).
+        focal_length: Focal length in millimeters.
+        resolution_width: Sensor/image width in pixels.
+        resolution_height: Sensor/image height in pixels.
+        hfov_deg: Horizontal field of view in degrees.
     """
+
     focal_length: float
     resolution_width: int
     resolution_height: int
     hfov_deg: float
 
+    # Computed fields
     hfov_rad: float = field(init=False)
     aspect_ratio: float = field(init=False)
     focal_length_px: float = field(init=False)
@@ -76,64 +86,94 @@ class CameraModel:
     principal_point_y: float = field(init=False)
 
     def __post_init__(self) -> None:
-        """Calculate derived camera parameters."""
+        """Calculate derived camera parameters after initialization."""
         if self.resolution_width <= 0 or self.resolution_height <= 0 or self.hfov_deg <= 0:
-             raise ValueError("Camera dimensions and HFOV must be positive.")
+            raise ValueError("Camera dimensions and HFOV must be positive.")
+
         self.hfov_rad = math.radians(self.hfov_deg)
         self.aspect_ratio = self.resolution_width / self.resolution_height
-        tan_arg = self.hfov_rad / 2.0
-        if abs(math.tan(tan_arg)) < 1e-9:
-             raise ValueError("HFOV results in near-zero tan value, cannot calculate focal length.")
-        self.focal_length_px = (self.resolution_width / 2.0) / math.tan(tan_arg)
+
+        tan_half_fov = math.tan(self.hfov_rad / 2.0)
+        if abs(tan_half_fov) < 1e-9:
+            raise ValueError("HFOV results in near-zero tan value.")
+
+        self.focal_length_px = (self.resolution_width / 2.0) / tan_half_fov
         self.principal_point_x = self.resolution_width / 2.0
         self.principal_point_y = self.resolution_height / 2.0
 
-def get_intrinsics(camera_model: CameraModel, scale: float = 1.0) -> np.ndarray:
+
+def get_intrinsic_matrix(
+    camera_model: CameraModel,
+    scale: float = 1.0
+) -> np.ndarray:
     """
-    Gets the 3x3 camera intrinsics matrix K, optionally scaled.
+    Construct the 3x3 camera intrinsics matrix K.
 
     Args:
-        camera_model: The CameraModel object.
-        scale: Optional scaling factor applied to principal point and focal length.
+        camera_model: CameraModel instance with camera parameters.
+        scale: Optional scaling factor for focal length and principal point.
 
     Returns:
-        The 3x3 intrinsics matrix K.
+        3x3 numpy array representing the intrinsic matrix K.
     """
-    if scale <= 0: scale = 1.0
+    if scale <= 0:
+        scale = 1.0
+
     fx = camera_model.focal_length_px / scale
-    fy = camera_model.focal_length_px / scale 
+    fy = camera_model.focal_length_px / scale
     cx = camera_model.principal_point_x / scale
     cy = camera_model.principal_point_y / scale
-    intrinsics = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float32)
-    return intrinsics
 
-def rotation_matrix_from_angles(roll: float, pitch: float, yaw: float) -> np.ndarray:
+    return np.array([
+        [fx, 0, cx],
+        [0, fy, cy],
+        [0, 0, 1]
+    ], dtype=np.float32)
+
+
+def euler_to_rotation_matrix(
+    roll: float,
+    pitch: float,
+    yaw: float
+) -> np.ndarray:
     """
-    Computes the 3x3 rotation matrix from roll, pitch, yaw angles (degrees).
-    Uses the 'xyz' extrinsic Euler angle convention.
+    Compute 3x3 rotation matrix from Euler angles.
+
+    Uses 'xyz' extrinsic Euler angle convention (roll-pitch-yaw).
 
     Args:
-        roll: Rotation about the x-axis (degrees).
-        pitch: Rotation about the y-axis (degrees).
-        yaw: Rotation about the z-axis (degrees).
+        roll: Rotation about x-axis in degrees.
+        pitch: Rotation about y-axis in degrees.
+        yaw: Rotation about z-axis in degrees.
 
     Returns:
-        The 3x3 rotation matrix.
+        3x3 rotation matrix as numpy array.
     """
     try:
         roll, pitch, yaw = float(roll), float(pitch), float(yaw)
-        r = Rotation.from_euler("xyz", [roll, pitch, yaw], degrees=True).as_matrix()
-        return r.astype(np.float32)
+        rotation = Rotation.from_euler("xyz", [roll, pitch, yaw], degrees=True)
+        return rotation.as_matrix().astype(np.float32)
     except (TypeError, ValueError) as e:
-         print(f"Error calculating rotation matrix (invalid angles?): {e}")
-         return np.identity(3, dtype=np.float32)
+        print(f"Error calculating rotation matrix: {e}")
+        return np.identity(3, dtype=np.float32)
 
 
-class QueryProcessor:
+class QueryPreprocessor:
     """
-    Applies a sequence of preprocessing steps (e.g., resizing, warping)
-    to query images based on configuration and metadata.
+    Image preprocessing pipeline for query images.
+
+    Applies configurable preprocessing steps (resize, warp) to transform
+    drone/UAV images for improved matching with satellite imagery.
+
+    Attributes:
+        steps: List of processing step names to apply.
+        resize_target: Target size for resize operation.
+        camera_model: Camera model for perspective warping.
+        target_gimbal_yaw: Target yaw angle in degrees.
+        target_gimbal_pitch: Target pitch angle in degrees (-90 = nadir).
+        target_gimbal_roll: Target roll angle in degrees.
     """
+
     def __init__(
         self,
         processings: Optional[List[str]] = None,
@@ -144,15 +184,15 @@ class QueryProcessor:
         target_gimbal_roll: float = 0.0,
     ) -> None:
         """
-        Initializes the QueryProcessor.
+        Initialize the query preprocessor.
 
         Args:
-            processings: List of processing step names ('resize', 'warp'). Order matters.
-            resize_target: Parameter for the 'resize' step (see process_resize).
-            camera_model: CameraModel object required for the 'warp' step.
-            target_gimbal_yaw: Target yaw angle (degrees) for warping.
-            target_gimbal_pitch: Target pitch angle (degrees) for warping (e.g., -90 for nadir).
-            target_gimbal_roll: Target roll angle (degrees) for warping.
+            processings: List of processing steps ('resize', 'warp').
+            resize_target: Resize target specification.
+            camera_model: Camera model (required for 'warp' step).
+            target_gimbal_yaw: Target yaw for warping.
+            target_gimbal_pitch: Target pitch for warping.
+            target_gimbal_roll: Target roll for warping.
         """
         self.resize_target = resize_target
         self.camera_model = camera_model
@@ -160,120 +200,159 @@ class QueryProcessor:
         self.target_gimbal_pitch = target_gimbal_pitch
         self.target_gimbal_roll = target_gimbal_roll
         self.processings = processings if processings else []
-        self._step_functions = {
-            "resize": self._resize_image,
-            "warp": self._warp_image,
+
+        # Map step names to methods
+        self._step_handlers: Dict[str, Callable] = {
+            "resize": self._apply_resize,
+            "warp": self._apply_warp,
         }
 
-    def __call__(self, image: np.ndarray, metadata: Dict[str, Any]) -> np.ndarray:
+    def __call__(
+        self,
+        image: np.ndarray,
+        metadata: Dict[str, Any]
+    ) -> np.ndarray:
         """
-        Applies the configured preprocessing steps sequentially to the image.
+        Apply preprocessing pipeline to an image.
 
         Args:
-            image: The input query image as a NumPy array (BGR or Grayscale).
-            metadata: Dictionary containing metadata for the query image (e.g.,
-                      'Gimball_Yaw', 'Gimball_Pitch', 'Gimball_Roll', 'Flight_Yaw').
+            image: Input image as numpy array (BGR or grayscale).
+            metadata: Image metadata dictionary containing orientation angles.
 
         Returns:
-            The processed image as a NumPy array. Returns the original image
-            if any processing step fails.
+            Processed image. Returns original on processing failure.
         """
-        processed_image = image.copy()
-        for step_name in self.processings:
-            if step_name in self._step_functions:
-                try:
-                    processed_image = self._step_functions[step_name](processed_image, metadata)
-                except Exception as e:
-                    print(f"Warning: Failed processing step '{step_name}': {e}")
-                    return image 
-            else:
-                 print(f"Warning: Unknown processing step '{step_name}' skipped.")
-        return processed_image
+        processed = image.copy()
 
-    def _resize_image(self, image: np.ndarray, metadata: Dict[str, Any]) -> np.ndarray:
-        """Internal method to apply resizing."""
+        for step_name in self.processings:
+            if step_name in self._step_handlers:
+                try:
+                    processed = self._step_handlers[step_name](processed, metadata)
+                except Exception as e:
+                    print(f"Warning: Preprocessing step '{step_name}' failed: {e}")
+                    return image
+            else:
+                print(f"Warning: Unknown preprocessing step '{step_name}' skipped.")
+
+        return processed
+
+    def _apply_resize(
+        self,
+        image: np.ndarray,
+        metadata: Dict[str, Any]
+    ) -> np.ndarray:
+        """Apply resize transformation to image."""
         if self.resize_target is None:
             return image
-        h, w = image.shape[:2]
-        new_w, new_h = process_resize(w, h, self.resize_target)
-        if (new_w, new_h) == (w, h):
+
+        height, width = image.shape[:2]
+        new_width, new_height = compute_resize_dimensions(width, height, self.resize_target)
+
+        if (new_width, new_height) == (width, height):
             return image
 
-        interp = cv2.INTER_AREA if (new_w * new_h < w * h) else cv2.INTER_LINEAR
+        interpolation = cv2.INTER_AREA if (new_width * new_height < width * height) else cv2.INTER_LINEAR
+
         try:
-            resized_image = cv2.resize(image, (new_w, new_h), interpolation=interp)
-            return resized_image
+            return cv2.resize(image, (new_width, new_height), interpolation=interpolation)
         except cv2.error as e:
-            print(f"Error during OpenCV resize: {e}")
-            return image 
-
-    def _warp_image(self, image: np.ndarray, metadata: Dict[str, Any]) -> np.ndarray:
-        """Internal method to apply perspective warping for top-down view."""
-        if self.camera_model is None:
-            print("Warning: Camera model required for warping. Skipping warp step.")
+            print(f"Error during resize: {e}")
             return image
 
-        h_orig, w_orig = image.shape[:2]
-        if h_orig <= 0 or w_orig <= 0:
-             print("Warning: Invalid image dimensions for warp.")
-             return image
+    def _apply_warp(
+        self,
+        image: np.ndarray,
+        metadata: Dict[str, Any]
+    ) -> np.ndarray:
+        """Apply perspective warp transformation for nadir view simulation."""
+        if self.camera_model is None:
+            print("Warning: Camera model required for warping. Skipping.")
+            return image
 
+        height_orig, width_orig = image.shape[:2]
+        if height_orig <= 0 or width_orig <= 0:
+            print("Warning: Invalid image dimensions for warp.")
+            return image
+
+        # Extract orientation from metadata
         gimbal_yaw = float(metadata.get('Gimball_Yaw', 0.0))
         gimbal_pitch = float(metadata.get('Gimball_Pitch', -90.0))
         gimbal_roll = float(metadata.get('Gimball_Roll', 0.0))
         flight_yaw = float(metadata.get('Flight_Yaw', 0.0))
 
+        # Compute current and target rotations
         current_yaw = gimbal_yaw + flight_yaw
-        current_pitch = gimbal_pitch
-        current_roll = gimbal_roll
-
-        R_current = rotation_matrix_from_angles(current_roll, current_pitch, current_yaw)
-        R_target = rotation_matrix_from_angles(
-            self.target_gimbal_roll, self.target_gimbal_pitch, self.target_gimbal_yaw
+        R_current = euler_to_rotation_matrix(gimbal_roll, gimbal_pitch, current_yaw)
+        R_target = euler_to_rotation_matrix(
+            self.target_gimbal_roll,
+            self.target_gimbal_pitch,
+            self.target_gimbal_yaw
         )
 
-        K_orig = get_intrinsics(self.camera_model) 
-        scale_w = w_orig / self.camera_model.resolution_width
-        scale_h = h_orig / self.camera_model.resolution_height
-        K_current = get_intrinsics(self.camera_model, scale=1/max(scale_w, scale_h)) 
+        # Compute homography from rotation
+        scale_w = width_orig / self.camera_model.resolution_width
+        scale_h = height_orig / self.camera_model.resolution_height
+        K = get_intrinsic_matrix(self.camera_model, scale=1 / max(scale_w, scale_h))
 
         try:
-            H = K_current @ R_target @ R_current.T @ np.linalg.inv(K_current)
+            H = K @ R_target @ R_current.T @ np.linalg.inv(K)
             H = H.astype(np.float32)
         except np.linalg.LinAlgError:
-            print("Warning: Singular matrix during homography calculation. Skipping warp.")
+            print("Warning: Singular matrix during homography calculation.")
             return image
 
-        corners = np.array([[0, 0], [w_orig, 0], [w_orig, h_orig], [0, h_orig]], dtype=np.float32).reshape(-1, 1, 2)
+        # Compute warped image bounds
+        corners = np.array([
+            [0, 0], [width_orig, 0],
+            [width_orig, height_orig], [0, height_orig]
+        ], dtype=np.float32).reshape(-1, 1, 2)
+
         try:
             warped_corners = cv2.perspectiveTransform(corners, H)
-            if warped_corners is None: raise ValueError("perspectiveTransform returned None")
+            if warped_corners is None:
+                raise ValueError("perspectiveTransform returned None")
         except cv2.error as e:
-            print(f"Warning: perspectiveTransform failed for corners: {e}. Skipping warp.")
+            print(f"Warning: perspectiveTransform failed: {e}")
             return image
 
-        x_coords = warped_corners[:, 0, 0]
-        y_coords = warped_corners[:, 0, 1]
         x_min, y_min = np.min(warped_corners, axis=0).ravel()
         x_max, y_max = np.max(warped_corners, axis=0).ravel()
 
-        w_new = int(round(x_max - x_min))
-        h_new = int(round(y_max - y_min))
+        width_new = int(round(x_max - x_min))
+        height_new = int(round(y_max - y_min))
 
-        if w_new <= 0 or h_new <= 0:
-            print(f"Warning: Invalid warped dimensions ({w_new}x{h_new}). Skipping warp.")
+        # Validate output dimensions
+        if width_new <= 0 or height_new <= 0:
+            print(f"Warning: Invalid warped dimensions ({width_new}x{height_new}).")
             return image
-        if w_new > w_orig * 10 or h_new > h_orig * 10:
-             print(f"Warning: Warped dimensions significantly larger ({w_new}x{h_new}) than original. Skipping warp.")
-             return image
 
-        T = np.array([[1, 0, -x_min], [0, 1, -y_min], [0, 0, 1]], dtype=np.float32)
-        H_translate = T @ H
+        if width_new > width_orig * 10 or height_new > height_orig * 10:
+            print(f"Warning: Warped dimensions too large ({width_new}x{height_new}).")
+            return image
+
+        # Apply translation to keep image in positive coordinates
+        T = np.array([
+            [1, 0, -x_min],
+            [0, 1, -y_min],
+            [0, 0, 1]
+        ], dtype=np.float32)
+
+        H_translated = T @ H
 
         try:
-            warped_image = cv2.warpPerspective(image, H_translate, (w_new, h_new),
-                                               flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=(0,0,0)) 
-            return warped_image
+            return cv2.warpPerspective(
+                image, H_translated, (width_new, height_new),
+                flags=cv2.INTER_LINEAR,
+                borderMode=cv2.BORDER_CONSTANT,
+                borderValue=(0, 0, 0)
+            )
         except cv2.error as e:
-            print(f"Error during OpenCV warpPerspective: {e}")
-            return image 
+            print(f"Error during warpPerspective: {e}")
+            return image
+
+
+# Backward compatibility aliases
+process_resize = compute_resize_dimensions
+get_intrinsics = get_intrinsic_matrix
+rotation_matrix_from_angles = euler_to_rotation_matrix
+QueryProcessor = QueryPreprocessor

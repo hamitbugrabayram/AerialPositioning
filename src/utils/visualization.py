@@ -1,11 +1,16 @@
 """
-Image visualization function for displaying feature matches.
+Visualization utilities for feature match display.
+
+This module provides functions for creating visual representations
+of feature matches between image pairs.
 """
+
+from pathlib import Path
+from typing import List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
-from pathlib import Path
-from typing import Optional, List, Tuple, Union
+
 
 def create_match_visualization(
     image0_path: Union[str, Path],
@@ -14,128 +19,140 @@ def create_match_visualization(
     mkpts1: np.ndarray,
     inliers_mask: np.ndarray,
     output_path: Union[str, Path],
-    title: str = "Feature Matches", 
-    line_color_inlier: Tuple[int, int, int] = (0, 255, 0),  
-    point_color_inlier: Tuple[int, int, int] = (0, 255, 0), 
-    line_color_outlier: Optional[Tuple[int, int, int]] = (150, 150, 150), 
+    title: str = "Feature Matches",
+    line_color_inlier: Tuple[int, int, int] = (0, 255, 0),
+    point_color_inlier: Tuple[int, int, int] = (0, 255, 0),
+    line_color_outlier: Optional[Tuple[int, int, int]] = (150, 150, 150),
     show_outliers: bool = False,
     point_size: int = 2,
     line_thickness: int = 1,
-    text_info: Optional[List[str]] = None, 
+    text_info: Optional[List[str]] = None,
     target_height: Optional[int] = 600
 ) -> bool:
     """
-    Creates and saves a side-by-side image visualization of matches.
+    Create and save a side-by-side visualization of feature matches.
 
-    Images are resized to have the same target height while maintaining aspect ratio.
-    Inlier matches are drawn, and optionally outlier matches. Text display is disabled.
+    Images are resized to a common height while preserving aspect ratios.
+    Inlier matches are drawn as lines connecting corresponding keypoints.
 
     Args:
-        image0_path: Path to the first image.
-        image1_path: Path to the second image.
-        mkpts0: Matched keypoints in image 0 (N x 2). Should be in original image coordinates.
-        mkpts1: Matched keypoints in image 1 (N x 2). Should be in original image coordinates.
+        image0_path: Path to the first (query) image.
+        image1_path: Path to the second (map) image.
+        mkpts0: Matched keypoints in image 0 (N x 2) in original coordinates.
+        mkpts1: Matched keypoints in image 1 (N x 2) in original coordinates.
         inliers_mask: Boolean mask indicating inliers (N,).
-        output_path: Path to save the visualization.
-        title: Title for the visualization (ignored).
-        line_color_inlier: BGR color tuple for inlier matches.
-        point_color_inlier: BGR color tuple for inlier points.
-        line_color_outlier: BGR color tuple for outlier matches (if show_outliers).
+        output_path: Path to save the visualization image.
+        title: Title for the visualization (unused, for API compatibility).
+        line_color_inlier: BGR color tuple for inlier match lines.
+        point_color_inlier: BGR color tuple for inlier keypoint circles.
+        line_color_outlier: BGR color tuple for outlier matches.
         show_outliers: Whether to draw outlier matches.
-        point_size: Radius of keypoint circles (if > 0).
+        point_size: Radius of keypoint circles (0 to disable).
         line_thickness: Thickness of match lines.
-        text_info: List of strings for info text (ignored).
-        target_height: Optional target height for the output visualization. Images
-                       will be scaled proportionally. If None, uses max input height.
+        text_info: List of text strings (unused, for API compatibility).
+        target_height: Target height for the output visualization.
+            If None, uses the maximum input height.
 
     Returns:
         True if visualization was saved successfully, False otherwise.
     """
     try:
-        img0_vis = cv2.imread(str(image0_path), cv2.IMREAD_COLOR)
-        img1_vis = cv2.imread(str(image1_path), cv2.IMREAD_COLOR)
+        # Load images
+        img0 = cv2.imread(str(image0_path), cv2.IMREAD_COLOR)
+        img1 = cv2.imread(str(image1_path), cv2.IMREAD_COLOR)
 
-        if img0_vis is None or img1_vis is None:
-            print(f"Error reading visualization image(s): {image0_path}, {image1_path}")
+        if img0 is None or img1 is None:
+            print(f"Error: Could not read images: {image0_path}, {image1_path}")
             return False
 
-        H0, W0 = img0_vis.shape[:2]
-        H1, W1 = img1_vis.shape[:2]
+        h0, w0 = img0.shape[:2]
+        h1, w1 = img1.shape[:2]
 
-        if H0 <=0 or W0 <=0 or H1 <=0 or W1 <=0:
-             print(f"Error: Invalid image dimensions for visualization.")
-             return False
+        if h0 <= 0 or w0 <= 0 or h1 <= 0 or w1 <= 0:
+            print("Error: Invalid image dimensions for visualization.")
+            return False
 
-        if target_height is None or target_height <= 0:
-            H_target = max(H0, H1)
-        else:
-            H_target = int(target_height) 
+        # Determine target height
+        h_target = target_height if target_height and target_height > 0 else max(h0, h1)
 
-        scale0 = H_target / H0
-        scale1 = H_target / H1
+        # Calculate scaling factors
+        scale0 = h_target / h0
+        scale1 = h_target / h1
 
-        W0_new = int(round(W0 * scale0))
-        W1_new = int(round(W1 * scale1))
-        W0_new = max(1, W0_new); W1_new = max(1, W1_new) 
+        w0_new = max(1, int(round(w0 * scale0)))
+        w1_new = max(1, int(round(w1 * scale1)))
 
-        interp = cv2.INTER_AREA if (scale0 < 1.0 or scale1 < 1.0) else cv2.INTER_LINEAR
-        image0_resized = cv2.resize(img0_vis, (W0_new, H_target), interpolation=interp)
-        image1_resized = cv2.resize(img1_vis, (W1_new, H_target), interpolation=interp)
+        # Resize images
+        interpolation = cv2.INTER_AREA if (scale0 < 1.0 or scale1 < 1.0) else cv2.INTER_LINEAR
+        img0_resized = cv2.resize(img0, (w0_new, h_target), interpolation=interpolation)
+        img1_resized = cv2.resize(img1, (w1_new, h_target), interpolation=interpolation)
 
+        # Scale keypoints
         mkpts0_scaled = mkpts0 * scale0
         mkpts1_scaled = mkpts1 * scale1
 
-        W_total = W0_new + W1_new
-        out = 255 * np.ones((H_target, W_total, 3), np.uint8)
+        # Create output canvas
+        w_total = w0_new + w1_new
+        canvas = 255 * np.ones((h_target, w_total, 3), dtype=np.uint8)
+        canvas[:h_target, :w0_new] = img0_resized
+        canvas[:h_target, w0_new:w_total] = img1_resized
 
-        out[:H_target, :W0_new] = image0_resized
-        out[:H_target, W0_new:W_total] = image1_resized
-
+        # Validate inliers mask
         if len(inliers_mask) != len(mkpts0):
-             print(f"Warning: Inlier mask length ({len(inliers_mask)}) differs from keypoint length ({len(mkpts0)}). Skipping drawing.")
-             inliers_mask = np.zeros(len(mkpts0), dtype=bool) 
+            print(f"Warning: Inlier mask length ({len(inliers_mask)}) differs "
+                  f"from keypoint count ({len(mkpts0)}).")
+            inliers_mask = np.zeros(len(mkpts0), dtype=bool)
         else:
             inliers_mask = inliers_mask.astype(bool)
 
-        mkpts0_draw = np.round(mkpts0_scaled).astype(int)
-        mkpts1_draw = np.round(mkpts1_scaled).astype(int)
+        # Convert to integer pixel coordinates
+        pts0 = np.round(mkpts0_scaled).astype(int)
+        pts1 = np.round(mkpts1_scaled).astype(int)
 
+        # Draw outliers first (if enabled)
         if show_outliers and line_color_outlier is not None:
-            outliers_mask = ~inliers_mask
-            mkpts0_out = mkpts0_draw[outliers_mask]
-            mkpts1_out = mkpts1_draw[outliers_mask]
-            for i in range(len(mkpts0_out)):
-                pt0 = tuple(mkpts0_out[i])
-                pt1 = tuple(mkpts1_out[i] + np.array([W0_new, 0]))
-                cv2.line(out, pt0, pt1, line_color_outlier, line_thickness, lineType=cv2.LINE_AA)
+            outlier_mask = ~inliers_mask
+            pts0_out = pts0[outlier_mask]
+            pts1_out = pts1[outlier_mask]
 
-        mkpts0_in = mkpts0_draw[inliers_mask]
-        mkpts1_in = mkpts1_draw[inliers_mask]
-        for i in range(len(mkpts0_in)):
-            pt0 = tuple(mkpts0_in[i])
-            pt1 = tuple(mkpts1_in[i] + np.array([W0_new, 0]))
-            cv2.line(out, pt0, pt1, line_color_inlier, line_thickness, lineType=cv2.LINE_AA)
+            for i in range(len(pts0_out)):
+                pt0 = tuple(pts0_out[i])
+                pt1 = tuple(pts1_out[i] + np.array([w0_new, 0]))
+                cv2.line(canvas, pt0, pt1, line_color_outlier, line_thickness, lineType=cv2.LINE_AA)
+
+        # Draw inliers
+        pts0_in = pts0[inliers_mask]
+        pts1_in = pts1[inliers_mask]
+
+        for i in range(len(pts0_in)):
+            pt0 = tuple(pts0_in[i])
+            pt1 = tuple(pts1_in[i] + np.array([w0_new, 0]))
+
+            cv2.line(canvas, pt0, pt1, line_color_inlier, line_thickness, lineType=cv2.LINE_AA)
+
             if point_size > 0:
-                cv2.circle(out, pt0, point_size, point_color_inlier, -1, lineType=cv2.LINE_AA)
-                cv2.circle(out, pt1, point_size, point_color_inlier, -1, lineType=cv2.LINE_AA)
+                cv2.circle(canvas, pt0, point_size, point_color_inlier, -1, lineType=cv2.LINE_AA)
+                cv2.circle(canvas, pt1, point_size, point_color_inlier, -1, lineType=cv2.LINE_AA)
 
+        # Save output
         output_path_obj = Path(output_path)
         output_path_obj.parent.mkdir(parents=True, exist_ok=True)
 
-        success = cv2.imwrite(str(output_path_obj), out)
+        success = cv2.imwrite(str(output_path_obj), canvas)
         if not success:
-            print(f"Error saving visualization to {output_path_obj}")
+            print(f"Error: Failed to save visualization to {output_path_obj}")
             return False
+
         return True
 
     except FileNotFoundError as e:
-        print(f"Error: Image file not found during visualization - {e}")
+        print(f"Error: Image file not found - {e}")
         return False
     except cv2.error as e:
-         print(f"Error: OpenCV error during visualization - {e}")
-         return False
+        print(f"Error: OpenCV error during visualization - {e}")
+        return False
     except Exception as e:
-        print(f"Error during visualization creation: {e}")
+        print(f"Error: Visualization creation failed - {e}")
         import traceback
         traceback.print_exc()
         return False

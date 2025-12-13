@@ -1,125 +1,192 @@
-import torch
-import cv2
-import numpy as np
+"""
+SuperGlue feature matching pipeline.
+
+This module implements the SuperGlue matcher with SuperPoint feature
+extraction for image matching and localization.
+"""
+
+import sys
 import time
 from pathlib import Path
-import sys
+from typing import Any, Dict, Optional, Tuple
 
-sg_path = Path(__file__).parent.parent / 'matchers/SuperGluePretrainedNetwork'
-if str(sg_path) not in sys.path:
-    sys.path.append(str(sg_path))
+import cv2
+import numpy as np
+import torch
+
+# Add SuperGlue to path
+_superglue_path = Path(__file__).parent.parent / 'matchers/SuperGluePretrainedNetwork'
+if str(_superglue_path) not in sys.path:
+    sys.path.append(str(_superglue_path))
 
 try:
     from models.matching import Matching
     from models.utils import frame2tensor
 except ImportError as e:
-    print(f"ERROR: Failed importing SuperGlue components: {e}")
+    print(f"ERROR: Failed to import SuperGlue components: {e}")
     sys.exit(1)
 
 try:
     from utils.visualization import create_match_visualization
 except ImportError:
-    print("ERROR: Could not import create_match_visualization from utils.visualization")
-    def create_match_visualization(*args, **kwargs):
+    print("WARNING: Could not import visualization module")
+    def create_match_visualization(*args, **kwargs) -> bool:
         print("Visualization function unavailable.")
         return False
 
-class SuperGluePipeline:
-    """Pipeline for feature matching using SuperGlue."""
 
-    def __init__(self, config: dict):
+class SuperGluePipeline:
+    """
+    Feature matching pipeline using SuperGlue.
+
+    SuperGlue is a graph neural network-based feature matcher that uses
+    attention mechanisms to match SuperPoint features.
+
+    Attributes:
+        config: Configuration dictionary.
+        device: Torch device for computation.
+        matching: SuperGlue matching model.
+    """
+
+    def __init__(self, config: Dict[str, Any]) -> None:
         """
-        Initializes the SuperGlue pipeline.
+        Initialize the SuperGlue pipeline.
 
         Args:
-            config: Dictionary containing configuration parameters.
-                    Expected keys: device, matcher_weights, matcher_params, ransac_params.
+            config: Configuration dictionary with keys:
+                - device: Computation device ('cuda' or 'cpu')
+                - matcher_weights: Dict with 'superglue_weights' key
+                - matcher_params.superglue: Dict with matcher settings
+                - ransac_params: Dict with RANSAC settings
         """
         self.config = config
         self.device = torch.device(config.get('device', 'cpu'))
-        sg_weights = config.get('matcher_weights', {})
-        sg_params = config.get('matcher_params', {}).get('superglue', {})
+
+        # Get configuration parameters
+        weights_config = config.get('matcher_weights', {})
+        matcher_params = config.get('matcher_params', {}).get('superglue', {})
         ransac_params = config.get('ransac_params', {})
 
-        sg_config = {
+        # Build SuperGlue configuration
+        superglue_config = {
             'superpoint': {
-                'nms_radius': sg_params.get('superpoint_nms_radius', 3),
-                'keypoint_threshold': sg_params.get('superpoint_keypoint_threshold', 0.005),
-                'max_keypoints': sg_params.get('superpoint_max_keypoints', 2048)
+                'nms_radius': matcher_params.get('superpoint_nms_radius', 3),
+                'keypoint_threshold': matcher_params.get('superpoint_keypoint_threshold', 0.005),
+                'max_keypoints': matcher_params.get('superpoint_max_keypoints', 2048)
             },
             'superglue': {
-                'weights': sg_weights.get('superglue_weights', 'outdoor'),
-                'sinkhorn_iterations': sg_params.get('superglue_sinkhorn_iterations', 20),
-                'match_threshold': sg_params.get('superglue_match_threshold', 0.2),
+                'weights': weights_config.get('superglue_weights', 'outdoor'),
+                'sinkhorn_iterations': matcher_params.get('superglue_sinkhorn_iterations', 20),
+                'match_threshold': matcher_params.get('superglue_match_threshold', 0.2),
             }
         }
-        print("Initializing SuperGlue...")
-        self.matching = Matching(sg_config).eval().to(self.device)
 
+        self._weights_type = weights_config.get('superglue_weights', 'outdoor')
+
+        print(f"Initializing SuperGlue with '{self._weights_type}' weights...")
+        self.matching = Matching(superglue_config).eval().to(self.device)
+
+        # RANSAC parameters
         self.ransac_thresh = ransac_params.get('reproj_threshold', 8.0)
         self.ransac_conf = ransac_params.get('confidence', 0.999)
         self.ransac_max_iter = ransac_params.get('max_iter', 10000)
         self.ransac_method = cv2.RANSAC
 
-    def preprocess_image(self, image_path: Path):
-        """Loads an image, converts to grayscale, and creates a tensor."""
-        try:
-            img = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
-            if img is None:
-                raise ValueError(f"Could not read image: {image_path.name}")
-            img_tensor = frame2tensor(img, self.device)
-            return img_tensor, img.shape[:2] 
-        except Exception as e:
-            print(f"Error loading/preprocessing image {image_path.name}: {e}")
-            return None, None
+    @property
+    def name(self) -> str:
+        """Return the matcher display name."""
+        return f"SuperGlue ({self._weights_type})"
 
-    def match(self, image0_path: Path, image1_path: Path) -> dict:
+    def _preprocess_image(
+        self,
+        image_path: Path
+    ) -> Tuple[Optional[torch.Tensor], Optional[Tuple[int, int]]]:
         """
-        Matches two images using SuperGlue.
+        Load and preprocess an image for SuperGlue.
 
         Args:
-            image0_path: Path to the first image.
-            image1_path: Path to the second image.
+            image_path: Path to the image file.
 
         Returns:
-            Dictionary containing match results:
-            'mkpts0', 'mkpts1', 'inliers', 'homography', 'time', 'success', 'mconf'.
+            Tuple of (image_tensor, shape) or (None, None) on error.
+        """
+        try:
+            image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+            if image is None:
+                raise ValueError(f"Could not read image: {image_path.name}")
+
+            image_tensor = frame2tensor(image, self.device)
+            return image_tensor, image.shape[:2]
+
+        except Exception as e:
+            print(f"Error loading image {image_path.name}: {e}")
+            return None, None
+
+    def match(self, image0_path: Path, image1_path: Path) -> Dict[str, Any]:
+        """
+        Match features between two images.
+
+        Args:
+            image0_path: Path to the query image.
+            image1_path: Path to the reference/map image.
+
+        Returns:
+            Dictionary containing:
+                - mkpts0, mkpts1: Matched keypoint arrays (N x 2)
+                - inliers: Boolean inlier mask (N,)
+                - homography: 3x3 transformation matrix or None
+                - time: Execution time in seconds
+                - success: Whether matching succeeded
+                - mconf: Match confidence scores (N,)
         """
         start_time = time.time()
+
         results = {
-            'mkpts0': np.array([]), 'mkpts1': np.array([]), 'inliers': np.array([]),
-            'homography': None, 'time': 0, 'success': False, 'mconf': np.array([])
+            'mkpts0': np.array([]),
+            'mkpts1': np.array([]),
+            'inliers': np.array([]),
+            'homography': None,
+            'time': 0.0,
+            'success': False,
+            'mconf': np.array([])
         }
+
         try:
-            image0_tensor, hw0 = self.preprocess_image(image0_path)
-            image1_tensor, hw1 = self.preprocess_image(image1_path)
-            if image0_tensor is None or image1_tensor is None:
-                 results['time'] = time.time() - start_time
-                 return results
+            # Load and preprocess images
+            image0, shape0 = self._preprocess_image(image0_path)
+            image1, shape1 = self._preprocess_image(image1_path)
 
-            pred_input = {'image0': image0_tensor, 'image1': image1_tensor}
+            if image0 is None or image1 is None:
+                results['time'] = time.time() - start_time
+                return results
 
+            # Run matching
             with torch.no_grad():
-                pred = self.matching(pred_input)
+                pred = self.matching({'image0': image0, 'image1': image1})
 
+            # Convert to numpy
             pred = {k: v[0].detach().cpu().numpy() for k, v in pred.items()}
 
+            # Extract matched keypoints
             kpts0, kpts1 = pred['keypoints0'], pred['keypoints1']
             matches, conf = pred['matches0'], pred['matching_scores0']
 
             valid = matches > -1
             mkpts0 = kpts0[valid]
             mkpts1 = kpts1[matches[valid]]
-            mconf = conf[valid] 
+            mconf = conf[valid]
+
             results['mkpts0'] = mkpts0
             results['mkpts1'] = mkpts1
             results['mconf'] = mconf
 
+            # Check minimum matches for RANSAC
             if len(mkpts0) < 4:
-                 print(f"  Warning: Found only {len(mkpts0)} initial matches. Skipping RANSAC.")
-                 results['time'] = time.time() - start_time
-                 return results
+                print(f"  Warning: Only {len(mkpts0)} matches found. Skipping RANSAC.")
+                results['time'] = time.time() - start_time
+                return results
 
+            # Estimate homography with RANSAC
             H, inlier_mask = cv2.findHomography(
                 mkpts0, mkpts1,
                 method=self.ransac_method,
@@ -129,9 +196,9 @@ class SuperGluePipeline:
             )
 
             if H is None or inlier_mask is None:
-                 print(f"  Warning: RANSAC failed to find Homography.")
-                 results['time'] = time.time() - start_time
-                 return results
+                print("  Warning: RANSAC failed to find homography.")
+                results['time'] = time.time() - start_time
+                return results
 
             results['homography'] = H
             results['inliers'] = inlier_mask.ravel().astype(bool)
@@ -141,17 +208,37 @@ class SuperGluePipeline:
             print(f"ERROR during SuperGlue matching: {e}")
             import traceback
             traceback.print_exc()
+
         finally:
             results['time'] = time.time() - start_time
-            return results
 
-    def visualize_matches(self, image0_path, image1_path, mkpts0, mkpts1, inliers, output_path):
-        """Saves a visualization of the matches using the standardized function."""
+        return results
+
+    def visualize_matches(
+        self,
+        image0_path: Path,
+        image1_path: Path,
+        mkpts0: np.ndarray,
+        mkpts1: np.ndarray,
+        inliers: np.ndarray,
+        output_path: Path
+    ) -> None:
+        """
+        Save a visualization of the feature matches.
+
+        Args:
+            image0_path: Path to the query image.
+            image1_path: Path to the reference image.
+            mkpts0: Matched keypoints in image 0.
+            mkpts1: Matched keypoints in image 1.
+            inliers: Boolean inlier mask.
+            output_path: Path to save the visualization.
+        """
         num_inliers = np.sum(inliers)
         num_total = len(mkpts0)
-        weights_name = self.config.get('matcher_weights',{}).get('superglue_weights', 'N/A')
-        text = [
-            f'SuperGlue ({weights_name})',
+
+        text_info = [
+            self.name,
             f'Matches: {num_inliers} / {num_total}',
         ]
 
@@ -164,9 +251,9 @@ class SuperGluePipeline:
                 inliers_mask=inliers,
                 output_path=output_path,
                 title="SuperGlue Matches",
-                text_info=text,
+                text_info=text_info,
                 show_outliers=False,
                 target_height=600
             )
         except Exception as e:
-            print(f"ERROR during SuperGlue visualization: {e}")
+            print(f"ERROR during visualization: {e}")

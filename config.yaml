@@ -1,62 +1,112 @@
-matcher_type: 'loftr' # 'gim', 'loftr', 'lightglue' or 'superglue'
-device: 'cuda'        
+# ==============================================================================
+#                    SATELLITE VISUAL LOCALIZATION CONFIG
+# ==============================================================================
+# Configuration file for the visual localization benchmark framework.
+# Modify the settings below to customize your benchmark run.
+# ==============================================================================
 
+# ------------------------------------------------------------------------------
+# CORE SETTINGS
+# ------------------------------------------------------------------------------
+# Matcher type to use for feature matching
+# Options: 'lightglue' | 'superglue' | 'loftr' | 'gim'
+matcher_type: 'loftr'
+
+# Computation device
+# Options: 'cuda' (GPU, recommended) | 'cpu'
+device: 'cuda'
+
+# ------------------------------------------------------------------------------
+# DATA PATHS
+# ------------------------------------------------------------------------------
 data_paths:
-  query_dir: 'data/query'
-  map_dir: 'data/map'
-  output_dir: 'data/output'
-  query_metadata: 'data/query/photo_metadata.csv'
-  map_metadata: 'data/map/map.csv'
+  query_dir: 'data/query'                         # Directory containing query (drone) images
+  map_dir: 'data/map'                             # Directory containing satellite map tiles
+  output_dir: 'data/output'                       # Directory for benchmark results
+  query_metadata: 'data/query/photo_metadata.csv' # Query image metadata CSV
+  map_metadata: 'data/map/map.csv'                # Map tile metadata CSV
 
+# ------------------------------------------------------------------------------
+# PREPROCESSING SETTINGS
+# ------------------------------------------------------------------------------
+# Image preprocessing pipeline configuration
 preprocessing:
-  enabled: true 
-  steps: ['resize', 'warp'] 
-  resize_target: [1024] 
-  target_gimbal_yaw: 0.0    
-  target_gimbal_pitch: -90.0 
-  target_gimbal_roll: 0.0
+  enabled: true                    # Enable/disable preprocessing
+  steps: ['resize', 'warp']        # Processing steps: 'resize', 'warp' (order matters)
+  resize_target: [1024]            # Target size: [max_dim] or [width, height]
+  target_gimbal_yaw: 0.0           # Target yaw angle (degrees)
+  target_gimbal_pitch: -90.0       # Target pitch angle (degrees, -90 = nadir view)
+  target_gimbal_roll: 0.0          # Target roll angle (degrees)
 
-camera_model: 
-  focal_length: 4.5           
-  resolution_width: 3040      
-  resolution_height: 4056     
-  hfov_deg: 82.9              
+# ------------------------------------------------------------------------------
+# CAMERA MODEL
+# ------------------------------------------------------------------------------
+# Camera intrinsics for perspective warping (required if 'warp' step is enabled)
+camera_model:
+  focal_length: 4.5                # Focal length in millimeters
+  resolution_width: 3040           # Sensor width in pixels
+  resolution_height: 4056          # Sensor height in pixels
+  hfov_deg: 82.9                   # Horizontal field of view in degrees
 
+# ------------------------------------------------------------------------------
+# MATCHER CONFIGURATION
+# ------------------------------------------------------------------------------
+# Model weights and feature extraction settings
 matcher_weights:
-  lightglue_features: 'superpoint' # 'superpoint' or 'disk'
-  superglue_weights: 'outdoor' # 'indoor' or 'outdoor'
-  gim_model_type: 'lightglue' # 'dkm', 'roma', 'loftr' or 'lightglue'
-  gim_weights_path: 'matchers/gim/weights/gim_lightglue_100h.ckpt' 
-  loftr_weights_path: 'matchers/LoFTR/weights/outdoor_ds.ckpt' 
+  # LightGlue settings
+  lightglue_features: 'superpoint' # Feature extractor: 'superpoint' | 'disk'
+  
+  # SuperGlue settings
+  superglue_weights: 'outdoor'     # Weight variant: 'indoor' | 'outdoor'
+  
+  # GIM settings
+  gim_model_type: 'lightglue'      # GIM variant: 'dkm' | 'roma' | 'loftr' | 'lightglue'
+  gim_weights_path: 'matchers/gim/weights/gim_lightglue_100h.ckpt'
+  
+  # LoFTR settings
+  loftr_weights_path: 'matchers/LoFTR/weights/outdoor_ds.ckpt'
+
+# Matcher-specific parameters
 matcher_params:
   lightglue:
-    extractor_max_keypoints: 2048
-    matcher_filter_threshold: 0.1
+    extractor_max_keypoints: 2048  # Maximum keypoints to extract
+    matcher_filter_threshold: 0.1  # Match confidence threshold
+
   superglue:
-    superpoint_max_keypoints: 2048
-    superpoint_keypoint_threshold: 0.005
-    superpoint_nms_radius: 3
-    superglue_match_threshold: 0.2
-    superglue_sinkhorn_iterations: 20
+    superpoint_max_keypoints: 2048       # SuperPoint max keypoints
+    superpoint_keypoint_threshold: 0.005 # Detection threshold
+    superpoint_nms_radius: 3             # Non-maximum suppression radius
+    superglue_match_threshold: 0.2       # Match confidence threshold
+    superglue_sinkhorn_iterations: 20    # Sinkhorn algorithm iterations
+
   gim:
-    resize_max: null 
-    dfactor: 8
-    dkm_h: 672
-    dkm_w: 896
-    roma_img_size: 672
+    resize_max: null               # Max resize dimension (null = no resize)
+    dfactor: 8                     # Dimension divisibility factor
+    dkm_h: 672                     # DKM input height
+    dkm_w: 896                     # DKM input width
+    roma_img_size: 672             # RoMa input size
     gim_lightglue_max_keypoints: 2048
     gim_lightglue_filter_threshold: 0.1
-  loftr: 
-    resize: [640, 480] 
-    temp_bug_fix: True 
-    match_thr: 0.2 
 
+  loftr:
+    resize: [640, 480]             # Input size: [width, height] or [max_dim]
+    temp_bug_fix: true             # Enable temporary bug fix
+    match_thr: 0.2                 # Coarse matching threshold
+
+# ------------------------------------------------------------------------------
+# RANSAC CONFIGURATION
+# ------------------------------------------------------------------------------
+# RANSAC parameters for geometric verification
 ransac_params:
-  method: 'RANSAC' # 'RANSAC' or 'USAC_MAGSAC'
-  reproj_threshold: 8.0
-  confidence: 0.999
-  max_iter: 10000
+  method: 'RANSAC'                 # Method: 'RANSAC' | 'USAC_MAGSAC'
+  reproj_threshold: 8.0            # Reprojection error threshold (pixels)
+  confidence: 0.999                # RANSAC confidence level
+  max_iter: 10000                  # Maximum iterations
 
+# ------------------------------------------------------------------------------
+# BENCHMARK SETTINGS
+# ------------------------------------------------------------------------------
+# Output and evaluation parameters
 benchmark_params:
-  save_visualization: true
-  min_inliers_for_success: 10
+  save_visualization: true         # Save match visualization images
+  min_inliers_for_success: 10      # Minimum inliers for successful localization
