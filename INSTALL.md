@@ -157,6 +157,6 @@ After successful installation:
 
 1. **Configure**: Edit `config.yaml` with your settings
 2. **Prepare Data**: Add query and map images to `data/` directory
-3. **Run**: Execute `python benchmark.py --config config.yaml`
+3. **Run**: Execute `python localize.py --config config.yaml`
 
 For detailed usage instructions, see the main [README.md](README.md).

@@ -4,7 +4,7 @@
 
 # 🛰️ Satellite Visual Localization
 
-**A comprehensive benchmarking framework for visual localization using satellite imagery**
+**Drone Position Estimation System using Satellite Imagery**
 
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-ee4c2c.svg)](https://pytorch.org/)
@@ -24,14 +24,14 @@
 
 ## 📋 Overview
 
-This repository provides a unified framework for benchmarking state-of-the-art feature matching algorithms for **drone-to-satellite visual localization**. It enables researchers and developers to evaluate and compare different matchers under consistent conditions, with comprehensive preprocessing capabilities and meter-level accuracy metrics.
+This repository provides a **drone position estimation system** that determines the GPS coordinates of a drone by matching drone camera images against satellite map tiles. Using state-of-the-art feature matching algorithms, the system calculates precise geo-localization with meter-level accuracy.
 
 ### 🎯 Key Capabilities
 
-- **Cross-view Matching**: Match drone/UAV imagery against satellite map tiles
-- **Geo-localization**: Calculate precise GPS coordinates from visual matches
-- **Error Analysis**: Compute localization error using Haversine distance
-- **Visualization**: Generate match visualizations for qualitative analysis
+- **Position Estimation**: Estimate drone GPS coordinates from camera imagery
+- **Cross-view Matching**: Match drone/UAV images against satellite map tiles
+- **Meter-level Accuracy**: Precise localization using Haversine distance computation
+- **Multiple Matchers**: Support for various feature matching algorithms (optional)
 
 ---
 
@@ -41,7 +41,7 @@ This repository provides a unified framework for benchmarking state-of-the-art f
 <tr>
 <td width="50%">
 
-### 🔧 Supported Matchers
+### 🔧 Supported Matchers (Optional)
 
 | Matcher | Type | Description |
 |---------|------|-------------|
@@ -53,13 +53,13 @@ This repository provides a unified framework for benchmarking state-of-the-art f
 </td>
 <td width="50%">
 
-### 📊 Output Metrics
+### 📊 Output Results
 
+- ✅ Estimated GPS coordinates (latitude, longitude)
 - ✅ Localization error (meters)
-- ✅ Inlier/outlier statistics
-- ✅ Homography estimation quality
-- ✅ Per-pair detailed results
-- ✅ Aggregate benchmark statistics
+- ✅ Match quality metrics
+- ✅ Per-image detailed results
+- ✅ Overall statistics
 
 </td>
 </tr>
@@ -166,17 +166,17 @@ preprocessing:
   resize_target: [1024]
 ```
 
-### 3. Run Benchmark
+### 3. Run Localization
 
 ```bash
-python benchmark.py --config config.yaml
+python localize.py --config config.yaml
 ```
 
 ---
 
 ## ⚙️ Configuration
 
-The `config.yaml` file provides comprehensive control over the benchmark:
+The `config.yaml` file provides comprehensive control over the localization:
 
 <details>
 <summary><strong>🔍 Full Configuration Reference</strong></summary>
@@ -215,8 +215,8 @@ ransac_params:
   confidence: 0.999
   max_iter: 10000
 
-# Benchmark Settings
-benchmark_params:
+# Localization Settings
+localization_params:
   save_visualization: true
   min_inliers_for_success: 10
 ```
@@ -231,21 +231,22 @@ Results are saved to a timestamped directory in `data/output/`:
 
 ```
 data/output/lightglue_preprocessed_20240115-143052/
-├── benchmark_summary.csv      # Per-query best match results
-├── benchmark_stats.txt        # Aggregate statistics
+├── localization_results.csv   # Per-query localization results
+├── localization_stats.txt     # Overall statistics
 ├── processed_queries/         # Preprocessed query images
 └── query_001/
     ├── query_001_vs_tile_001_results.txt
     └── query_001_vs_tile_001_match.png
 ```
 
-### Sample Output Metrics
+### Sample Output
 
 | Metric | Description |
 |--------|-------------|
-| `Error (m)` | Haversine distance between ground truth and prediction |
-| `Inliers` | Number of geometrically consistent matches |
-| `Success Rate` | Percentage of successfully localized queries |
+| `Pred Latitude` | Estimated latitude coordinate |
+| `Pred Longitude` | Estimated longitude coordinate |
+| `Error (m)` | Distance between ground truth and prediction |
+| `Success` | Whether localization was successful |
 
 ---
 
@@ -253,7 +254,7 @@ data/output/lightglue_preprocessed_20240115-143052/
 
 ```
 SatelliteLocalization/
-├── 📄 benchmark.py           # Main benchmark runner
+├── 📄 localize.py            # Main localization script
 ├── 📄 config.yaml            # Configuration file
 ├── 📄 requirements.txt       # Python dependencies
 ├── 📁 src/                   # Source code
@@ -291,11 +292,11 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📚 Citation
 
-If you use this framework in your research, please cite:
+If you use this system in your research, please cite:
 
 ```bibtex
 @software{satellite_localization,
-  title = {Satellite Visual Localization Benchmark},
+  title = {Satellite Visual Localization},
   author = {ALFONSOBUGRA},
   url = {https://github.com/ALFONSOBUGRA/SatelliteLocalization},
   year = {2024}
@@ -306,7 +307,7 @@ If you use this framework in your research, please cite:
 
 ## 🙏 Acknowledgments
 
-This framework builds upon excellent open-source work:
+This system builds upon excellent open-source work:
 
 - [LightGlue](https://github.com/cvg/LightGlue) - ETH Zurich
 - [SuperGlue](https://github.com/magicleap/SuperGluePretrainedNetwork) - Magic Leap

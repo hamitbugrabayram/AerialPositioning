@@ -1,8 +1,8 @@
 # ==============================================================================
 #                    SATELLITE VISUAL LOCALIZATION CONFIG
 # ==============================================================================
-# Configuration file for the visual localization benchmark framework.
-# Modify the settings below to customize your benchmark run.
+# Configuration file for the drone position estimation system.
+# This system uses satellite imagery to estimate drone GPS coordinates.
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
@@ -22,7 +22,7 @@ device: 'cuda'
 data_paths:
   query_dir: 'data/query'                         # Directory containing query (drone) images
   map_dir: 'data/map'                             # Directory containing satellite map tiles
-  output_dir: 'data/output'                       # Directory for benchmark results
+  output_dir: 'data/output'                       # Directory for localization results
   query_metadata: 'data/query/photo_metadata.csv' # Query image metadata CSV
   map_metadata: 'data/map/map.csv'                # Map tile metadata CSV
 
@@ -104,9 +104,9 @@ ransac_params:
   max_iter: 10000                  # Maximum iterations
 
 # ------------------------------------------------------------------------------
-# BENCHMARK SETTINGS
+# LOCALIZATION SETTINGS
 # ------------------------------------------------------------------------------
 # Output and evaluation parameters
-benchmark_params:
+localization_params:
   save_visualization: true         # Save match visualization images
   min_inliers_for_success: 10      # Minimum inliers for successful localization

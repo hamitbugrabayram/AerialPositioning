@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Satellite Visual Localization Benchmark
+Satellite Visual Localization System
 
-This script provides a comprehensive benchmarking framework for evaluating
-feature matching algorithms on drone-to-satellite visual localization tasks.
+This script provides a drone localization system using satellite imagery.
+It estimates the GPS position of a drone by matching drone camera images
+against satellite map tiles using state-of-the-art feature matching algorithms.
 
 Usage:
-    python benchmark.py --config config.yaml
+    python localize.py --config config.yaml
 """
 
 import argparse
@@ -62,7 +63,7 @@ except ImportError as e:
 
 @dataclass
 class QueryResult:
-    """Container for per-query benchmark results."""
+    """Container for per-query localization results."""
     query_filename: str
     best_map_filename: Optional[str] = None
     inliers: int = -1
@@ -77,8 +78,8 @@ class QueryResult:
 
 
 @dataclass
-class BenchmarkConfig:
-    """Parsed benchmark configuration."""
+class LocalizationConfig:
+    """Parsed localization configuration."""
     matcher_type: str
     device: str
     data_paths: Dict[str, str]
@@ -87,10 +88,10 @@ class BenchmarkConfig:
     matcher_weights: Dict[str, Any]
     matcher_params: Dict[str, Any]
     ransac_params: Dict[str, Any]
-    benchmark_params: Dict[str, Any]
+    localization_params: Dict[str, Any]
 
     @classmethod
-    def from_yaml(cls, config_path: str) -> 'BenchmarkConfig':
+    def from_yaml(cls, config_path: str) -> 'LocalizationConfig':
         """Load configuration from YAML file."""
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
@@ -104,7 +105,7 @@ class BenchmarkConfig:
             matcher_weights=config.get('matcher_weights', {}),
             matcher_params=config.get('matcher_params', {}),
             ransac_params=config.get('ransac_params', {}),
-            benchmark_params=config.get('benchmark_params', {}),
+            localization_params=config.get('localization_params', config.get('benchmark_params', {})),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -118,7 +119,7 @@ class BenchmarkConfig:
             'matcher_weights': self.matcher_weights,
             'matcher_params': self.matcher_params,
             'ransac_params': self.ransac_params,
-            'benchmark_params': self.benchmark_params,
+            'benchmark_params': self.localization_params,  # For backward compatibility
         }
 
 
@@ -137,12 +138,12 @@ class PipelineFactory:
     }
 
     @classmethod
-    def create(cls, config: BenchmarkConfig):
+    def create(cls, config: LocalizationConfig):
         """
         Create a matcher pipeline based on configuration.
 
         Args:
-            config: Benchmark configuration.
+            config: Localization configuration.
 
         Returns:
             Initialized pipeline instance.
@@ -162,27 +163,27 @@ class PipelineFactory:
 
 
 # =============================================================================
-# Benchmark Runner
+# Localization Runner
 # =============================================================================
 
-class BenchmarkRunner:
+class LocalizationRunner:
     """
-    Main benchmark runner for visual localization evaluation.
+    Main localization runner for drone position estimation.
 
-    This class orchestrates the benchmark process including:
+    This class orchestrates the localization process including:
     - Loading and validating configuration
     - Initializing preprocessing and matching pipelines
-    - Processing query-map pairs
-    - Computing localization metrics
+    - Processing query images to estimate GPS positions
+    - Computing localization accuracy metrics
     - Saving results and statistics
     """
 
-    def __init__(self, config: BenchmarkConfig):
+    def __init__(self, config: LocalizationConfig):
         """
-        Initialize the benchmark runner.
+        Initialize the localization runner.
 
         Args:
-            config: Parsed benchmark configuration.
+            config: Parsed localization configuration.
         """
         self.config = config
         self.pipeline = None
@@ -192,9 +193,9 @@ class BenchmarkRunner:
         self.output_dir = None
 
     def run(self) -> None:
-        """Execute the benchmark."""
+        """Execute the localization process."""
         print("\n" + "=" * 60)
-        print("  SATELLITE VISUAL LOCALIZATION BENCHMARK")
+        print("  DRONE POSITION ESTIMATION SYSTEM")
         print("=" * 60 + "\n")
 
         # Setup
@@ -204,14 +205,14 @@ class BenchmarkRunner:
         self._initialize_pipeline()
         self._load_metadata()
 
-        # Run benchmark
+        # Run localization
         results = self._process_queries()
 
         # Save results
         self._save_results(results)
 
         print("\n" + "=" * 60)
-        print("  BENCHMARK COMPLETE")
+        print("  LOCALIZATION COMPLETE")
         print("=" * 60 + "\n")
 
     def _validate_paths(self) -> None:
@@ -346,11 +347,11 @@ class BenchmarkRunner:
         temp_dir.mkdir(exist_ok=True)
 
         paths = self.config.data_paths
-        min_inliers = self.config.benchmark_params.get('min_inliers_for_success', 10)
-        save_viz = self.config.benchmark_params.get('save_visualization', False)
+        min_inliers = self.config.localization_params.get('min_inliers_for_success', 10)
+        save_viz = self.config.localization_params.get('save_visualization', False)
 
         print("\n" + "-" * 60)
-        print("Starting benchmark loop...")
+        print("Starting localization...")
         print("-" * 60)
 
         total_start = time.time()
@@ -700,7 +701,7 @@ class BenchmarkRunner:
         summary_df = pd.DataFrame(summary_data)
 
         # Save CSV
-        csv_path = self.output_dir / "benchmark_summary.csv"
+        csv_path = self.output_dir / "localization_results.csv"
         try:
             summary_df.to_csv(csv_path, index=False, float_format='%.7f')
             print(f"\nSummary saved: {csv_path}")
@@ -715,7 +716,7 @@ class BenchmarkRunner:
         summary_df: pd.DataFrame,
         results: List[QueryResult]
     ) -> None:
-        """Compute and save overall benchmark statistics."""
+        """Compute and save overall localization statistics."""
         successful = summary_df[summary_df['Localization Success'] == True]
 
         num_queries = len(self.query_df)
@@ -735,7 +736,7 @@ class BenchmarkRunner:
 
         # Print statistics
         print("\n" + "=" * 60)
-        print("  BENCHMARK STATISTICS")
+        print("  LOCALIZATION STATISTICS")
         print("=" * 60)
         print(f"  Total Queries:    {num_queries}")
         print(f"  Processed:        {num_processed}")
@@ -752,11 +753,11 @@ class BenchmarkRunner:
         print("=" * 60)
 
         # Save to file
-        stats_path = self.output_dir / "benchmark_stats.txt"
+        stats_path = self.output_dir / "localization_stats.txt"
         try:
             with open(stats_path, 'w') as f:
                 f.write("=" * 50 + "\n")
-                f.write("BENCHMARK STATISTICS\n")
+                f.write("LOCALIZATION STATISTICS\n")
                 f.write("=" * 50 + "\n\n")
 
                 f.write(f"Matcher: {self.config.matcher_type.upper()}\n")
@@ -789,14 +790,14 @@ class BenchmarkRunner:
 # =============================================================================
 
 def main():
-    """Main entry point for the benchmark script."""
+    """Main entry point for the localization script."""
     parser = argparse.ArgumentParser(
-        description="Run Satellite Visual Localization Benchmark",
+        description="Run Drone Position Estimation using Satellite Imagery",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python benchmark.py --config config.yaml
-  python benchmark.py --config my_custom_config.yaml
+  python localize.py --config config.yaml
+  python localize.py --config my_custom_config.yaml
         """
     )
     parser.add_argument(
@@ -816,7 +817,7 @@ Examples:
     # Load configuration
     print(f"Loading configuration from: {config_path}")
     try:
-        config = BenchmarkConfig.from_yaml(str(config_path))
+        config = LocalizationConfig.from_yaml(str(config_path))
     except Exception as e:
         print(f"ERROR: Failed to load configuration: {e}")
         sys.exit(1)
@@ -831,12 +832,12 @@ Examples:
         print("ERROR: Core helper functions failed to import.")
         sys.exit(1)
 
-    # Run benchmark
+    # Run localization
     try:
-        runner = BenchmarkRunner(config)
+        runner = LocalizationRunner(config)
         runner.run()
     except Exception as e:
-        print(f"\nERROR: Benchmark failed: {e}")
+        print(f"\nERROR: Localization failed: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
