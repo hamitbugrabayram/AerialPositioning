@@ -1,77 +1,77 @@
 <p align="center">
-  <img src="thumbnail.png" alt="Visual Localization Thumbnail" width="600"/>
+  <img src="thumbnail.png" alt="Görsel Konumlama Küçük Resmi" width="600"/>
 </p>
 
-# Visual Localization using pre-existing Satellite Images
+# Uydu Görüntüleri Kullanarak Görsel Konumlama
 
-This repository provides a framework for benchmarking different feature matching algorithms (LightGlue, SuperGlue, GIM variants) for the task of visual localization, specifically comparing drone imagery against satellite maps. It includes pipelines for each matcher, preprocessing capabilities (resizing, warping), and calculates localization error in meters. 
+Bu depo, görsel konumlama görevi için farklı özellik eşleştirme algoritmalarını (LightGlue, SuperGlue, GIM varyantları) karşılaştırmak amacıyla tasarlanmış bir kıyaslama çerçevesi sunar. Özellikle drone görüntülerini uydu haritalarıyla karşılaştırır. Her eşleştirici için pipeline'lar, ön işleme özellikleri (yeniden boyutlandırma, perspektif düzeltme) ve metre cinsinden konumlama hatası hesaplama içerir.
 
 
-## Features
+## Özellikler
 
-*   **Multiple Matchers:** Compare LightGlue, SuperGlue, and GIM (DKM, RoMa, LoFTR, LightGlue variant).
-*   **Standardized Pipelines:** Encapsulated pipelines for easy execution (`src/`).
-*   **Preprocessing:** Optional image resizing and perspective warping (top-down view simulation).
-*   **Meter-Level Error:** Calculates localization error using Haversine distance between Ground Truth and Prediction.
-*   **Detailed Output:** Generates per-pair results (`.txt`), visualizations (`.png`), and overall summaries (`.csv`, `.txt`).
+*   **Çoklu Eşleştiriciler:** LightGlue, SuperGlue ve GIM (DKM, RoMa, LoFTR, LightGlue varyantı) karşılaştırması.
+*   **Standartlaştırılmış Pipeline'lar:** Kolay yürütme için kapsüllenmiş pipeline'lar (`src/`).
+*   **Ön İşleme:** İsteğe bağlı görüntü yeniden boyutlandırma ve perspektif düzeltme (kuşbakışı görünüm simülasyonu).
+*   **Metre Düzeyinde Hata:** Ground Truth ve Tahmin arasındaki Haversine mesafesi kullanılarak konumlama hatası hesaplanır.
+*   **Detaylı Çıktı:** Her çift için sonuçlar (`.txt`), görselleştirmeler (`.png`) ve genel özetler (`.csv`, `.txt`) oluşturur.
 
-## Getting Started
+## Başlarken
 
-### 1. Prerequisites
+### 1. Gereksinimler
 
-*   **Conda:** Anaconda or Miniconda is required for environment management.
+*   **Conda:** Ortam yönetimi için Anaconda veya Miniconda gereklidir.
 
-### 2. Clone Repository
+### 2. Depoyu Klonlama
 
-Clone this repository *recursively* to include the necessary matcher submodules:
+Gerekli eşleştirici alt modüllerini dahil etmek için bu depoyu *recursive* olarak klonlayın:
 
 ```bash
 git clone --recursive https://github.com/ALFONSOBUGRA/SatelliteLocalization.git
 cd SatelliteLocalization
 ```
 
-If you cloned without --recursive, run this inside the repository directory:
+Eğer --recursive olmadan klonladıysanız, depo dizininde şunu çalıştırın:
 ```bash
 git submodule update --init --recursive
 ```
-### 3. Setup Environment
+### 3. Ortam Kurulumu
 
-Follow the detailed steps in INSTALL.md to create the Conda environment.
+Conda ortamını oluşturmak için INSTALL.md dosyasındaki detaylı adımları takip edin.
 
-### 4. Data Setup
+### 4. Veri Hazırlığı
 
-- Place your drone query images in the data/query/ directory.
-- Place the corresponding photo_metadata.csv file (containing columns like Filename, Latitude, Longitude, and orientation angles if using warping) in data/query/.
-- Place your satellite map tile images in the data/map/ directory.
-- Place the corresponding map.csv file (containing columns like Filename, Top_left_lat, etc.) in data/map/.
-(Refer to the provided example CSV files for the required format.)
+- Drone sorgu görüntülerinizi data/query/ dizinine yerleştirin.
+- photo_metadata.csv dosyasını (Filename, Latitude, Longitude ve perspektif düzeltme kullanılıyorsa oryantasyon açıları gibi sütunlar içeren) data/query/ dizinine yerleştirin.
+- Uydu harita tile görüntülerinizi data/map/ dizinine yerleştirin.
+- map.csv dosyasını (Filename, Top_left_lat vb. sütunlar içeren) data/map/ dizinine yerleştirin.
+(Gerekli format için sağlanan örnek CSV dosyalarına bakın.)
 
-### 5. Model Weights
+### 5. Model Ağırlıkları
 
-This repository does not include pre-trained model weights (.ckpt, .pth).
+Bu depo önceden eğitilmiş model ağırlıklarını (.ckpt, .pth) içermez.
 
-Download the necessary weights for the specific matcher(s) you intend to use (especially for GIM variants and LoFTR).
+Kullanmayı planladığınız eşleştirici(ler) için gerekli ağırlıkları indirin (özellikle GIM varyantları ve LoFTR için).
 
-Place the weights in an accessible location (e.g., within the respective matchers/<matcher_name>/weights directory. However, this might be ignored by the submodule's gitignore - a central weights/ folder outside matchers might be better).
+Ağırlıkları erişilebilir bir konuma yerleştirin (örn. ilgili matchers/<eşleştirici_adı>/weights dizininde. Ancak bu, alt modülün gitignore'u tarafından yok sayılabilir - matchers dışında merkezi bir weights/ klasörü daha iyi olabilir).
 
-Update the paths in config.yaml under the matcher_weights section accordingly (e.g., gim_weights_path, loftr_weights_path).
+config.yaml dosyasındaki matcher_weights bölümündeki yolları güncelleyin (örn. gim_weights_path, loftr_weights_path).
 
-### 6. Run Benchmark
+### 6. Kıyaslamayı Çalıştırma
 
-Activate your Conda environment (e.g., conda activate matcher_benchmark) and run:
+Conda ortamınızı etkinleştirin (örn. conda activate visloc) ve çalıştırın:
 ```bash
 python benchmark.py --config config.yaml
 ```
-### 7. Output
-Results will be saved in a timestamped subdirectory inside data/output/. This includes:
-Folders for each query image containing:
-Per-map comparison .txt files with detailed metrics.
-Match visualization .png files (if enabled and successful).
-benchmark_summary.csv: Summary of the best match results for each query.
-benchmark_stats.txt: Overall statistics for the benchmark run.
-processed_queries/ (if preprocessing is used): Contains the modified query images used for matching.
+### 7. Çıktılar
+Sonuçlar data/output/ içinde zaman damgalı bir alt dizine kaydedilir. Bu içerikler şunlardır:
+Her sorgu görüntüsü için klasörler:
+- Detaylı metriklere sahip harita karşılaştırma .txt dosyaları.
+- Eşleşme görselleştirme .png dosyaları (etkinleştirilmişse ve başarılıysa).
+- benchmark_summary.csv: Her sorgu için en iyi eşleşme sonuçlarının özeti.
+- benchmark_stats.txt: Kıyaslama çalıştırması için genel istatistikler.
+- processed_queries/ (ön işleme kullanılıyorsa): Eşleştirme için kullanılan değiştirilmiş sorgu görüntülerini içerir.
 
 
-### Acknowledgments
-This framework builds upon concepts demonstrated in WildNav and its implementation.
-Utilizes the excellent open-source work from the LightGlue, SuperGlue, and GIM authors.
+### Teşekkürler
+Bu çerçeve, WildNav'da gösterilen kavramlar ve uygulamasına dayanmaktadır.
+LightGlue, SuperGlue ve GIM yazarlarının mükemmel açık kaynak çalışmalarını kullanır.
