@@ -93,8 +93,22 @@ class LocalizationConfig:
     @classmethod
     def from_yaml(cls, config_path: str) -> 'LocalizationConfig':
         """Load configuration from YAML file."""
+        import warnings
+
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
+
+        # Handle backward compatibility with deprecation warning
+        localization_params = config.get('localization_params')
+        if localization_params is None:
+            localization_params = config.get('benchmark_params', {})
+            if 'benchmark_params' in config:
+                warnings.warn(
+                    "'benchmark_params' is deprecated and will be removed in a future version. "
+                    "Please use 'localization_params' instead.",
+                    DeprecationWarning,
+                    stacklevel=2
+                )
 
         return cls(
             matcher_type=config.get('matcher_type', 'lightglue'),
@@ -105,11 +119,15 @@ class LocalizationConfig:
             matcher_weights=config.get('matcher_weights', {}),
             matcher_params=config.get('matcher_params', {}),
             ransac_params=config.get('ransac_params', {}),
-            localization_params=config.get('localization_params', config.get('benchmark_params', {})),
+            localization_params=localization_params,
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for pipeline initialization."""
+        """Convert to dictionary for pipeline initialization.
+        
+        Note: 'benchmark_params' key is maintained for backward compatibility
+        with existing pipeline implementations.
+        """
         return {
             'matcher_type': self.matcher_type,
             'device': self.device,
@@ -119,7 +137,7 @@ class LocalizationConfig:
             'matcher_weights': self.matcher_weights,
             'matcher_params': self.matcher_params,
             'ransac_params': self.ransac_params,
-            'benchmark_params': self.localization_params,  # For backward compatibility
+            'benchmark_params': self.localization_params,
         }
 
 
@@ -676,7 +694,7 @@ class LocalizationRunner:
                 print(f"  WARNING: Visualization failed: {e}")
 
     def _save_results(self, results: List[QueryResult]) -> None:
-        """Save benchmark summary and statistics."""
+        """Save localization results and statistics."""
         if not results:
             print("No results to save.")
             return
