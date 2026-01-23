@@ -1,0 +1,15 @@
+[submodule "matchers/LightGlue"]
+	path = matchers/LightGlue
+	url = https://github.com/cvg/LightGlue.git
+[submodule "matchers/SuperGluePretrainedNetwork"]
+	path = matchers/SuperGluePretrainedNetwork
+	url = https://github.com/magicleap/SuperGluePretrainedNetwork.git
+[submodule "matchers/gim"]
+	path = matchers/gim
+	url = https://github.com/xuelunshen/gim.git
+[submodule "matchers/LoFTR"]
+	path = matchers/LoFTR
+	url = https://github.com/zju3dv/LoFTR.git
+[submodule "matchers/MINIMA"]
+	path = matchers/MINIMA
+	url = https://github.com/LSXI7/MINIMA.git
