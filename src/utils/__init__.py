@@ -1,12 +1,10 @@
 """
 Utility modules for the Satellite Visual Localization framework.
-
 This package provides:
 - helpers: GPS and localization calculation utilities
 - preprocessing: Image preprocessing and camera modeling
 - visualization: Match visualization utilities
 """
-
 from src.matchers.base import BaseMatcher, MatchResult
 from .helpers import (
     haversine_distance,
@@ -17,13 +15,11 @@ from .helpers import (
 from .preprocessing import (
     CameraModel,
     QueryPreprocessor,
-    QueryProcessor,
     compute_resize_dimensions,
     get_intrinsic_matrix,
     euler_to_rotation_matrix,
 )
 from .visualization import create_match_visualization
-
 __all__ = [
     'BaseMatcher',
     'MatchResult',
@@ -33,7 +29,6 @@ __all__ = [
     'latlon_to_pixel',
     'CameraModel',
     'QueryPreprocessor',
-    'QueryProcessor',
     'compute_resize_dimensions',
     'get_intrinsic_matrix',
     'euler_to_rotation_matrix',

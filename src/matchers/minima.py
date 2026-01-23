@@ -1,4 +1,4 @@
-"""MINIMA feature matching pipeline.
+"""MINIMA feature matching pipeline implementation.
 
 This module implements the MINIMA matcher supporting multiple methods:
 xoftr, sp_lg, loftr for cross-modal and multi-modal image matching.
@@ -9,17 +9,16 @@ import sys
 import time
 from argparse import Namespace
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 import numpy as np
 
 from .base import BaseMatcher
 
-_minima_path = Path(__file__).resolve().parent.parent.parent / "matchers/MINIMA"
-
+_MINIMA_PATH = Path(__file__).resolve().parent.parent.parent / "matchers/MINIMA"
 
 class MinimaPipeline(BaseMatcher):
-    """Feature matching pipeline using MINIMA.
+    """Feature matching pipeline using the MINIMA framework.
 
     MINIMA supports multiple matching methods for cross-modal matching:
     - xoftr: XoFTR-based matcher
@@ -27,17 +26,17 @@ class MinimaPipeline(BaseMatcher):
     - loftr: LoFTR-based matcher
 
     Attributes:
-        method: Selected matching method.
-        matcher: MINIMA matcher callable.
+        method (str): Selected matching method.
+        matcher (Any): The loaded MINIMA matcher callable.
     """
 
     SUPPORTED_METHODS = ["xoftr", "sp_lg", "loftr"]
 
     def __init__(self, config: Dict[str, Any]) -> None:
-        """Initialize the MINIMA pipeline.
+        """Initializes the MINIMA pipeline with the chosen method.
 
         Args:
-            config: Configuration dictionary.
+            config: Configuration dictionary containing matcher parameters.
         """
         super().__init__(config)
 
@@ -51,35 +50,32 @@ class MinimaPipeline(BaseMatcher):
                 f"Supported: {self.SUPPORTED_METHODS}"
             )
 
-        weights_dir = weights_config.get(
+        weights_dir_raw = weights_config.get(
             "minima_weights_dir", "matchers/MINIMA/weights"
         )
-        weights_dir = Path(weights_dir)
+        weights_dir = Path(weights_dir_raw)
         if not weights_dir.is_absolute():
             weights_dir = Path(__file__).resolve().parent.parent.parent / weights_dir
 
-        args = self._build_method_args(weights_config, weights_dir)
+        method_args = self._build_method_args(weights_config, weights_dir)
 
         print(f"Initializing MINIMA with method: {self.method}")
         print(f"  Weights directory: {weights_dir}")
 
-        self._load_matcher(args)
+        self.matcher = None
+        self._load_matcher(method_args)
         print(f"MINIMA ({self.method}) initialized successfully.")
 
     def _load_matcher(self, args: Namespace) -> None:
-        """Load the MINIMA matcher with proper path handling.
-
-        Args:
-            args: Method-specific arguments.
-        """
+        """Loads the MINIMA matcher and handles internal path dependencies."""
         original_dir = os.getcwd()
         original_path = sys.path.copy()
 
         try:
-            os.chdir(str(_minima_path))
+            os.chdir(str(_MINIMA_PATH))
 
             if not hasattr(np, "float"):
-                np.float = np.float64  # type: ignore
+                np.float = np.float64
 
             sys.path = [p for p in sys.path if "SatelliteLocalization/src" not in p]
 
@@ -89,26 +85,26 @@ class MinimaPipeline(BaseMatcher):
                     saved_modules[mod_name] = sys.modules.pop(mod_name)
 
             minima_paths = [
-                str(_minima_path),
-                str(_minima_path / "third_party"),
-                str(_minima_path / "third_party" / "RoMa"),
+                str(_MINIMA_PATH),
+                str(_MINIMA_PATH / "third_party"),
+                str(_MINIMA_PATH / "third_party" / "RoMa"),
             ]
-            for p in reversed(minima_paths):
-                if p not in sys.path:
-                    sys.path.insert(0, p)
+            for path_str in reversed(minima_paths):
+                if path_str not in sys.path:
+                    sys.path.insert(0, path_str)
 
-            from load_model import load_xoftr, load_loftr, load_sp_lg
+            from load_model import load_loftr, load_sp_lg, load_xoftr
 
             if self.method == "xoftr":
-                matcher = load_xoftr(args)
+                loaded_model = load_xoftr(args)
             elif self.method == "loftr":
-                matcher = load_loftr(args, test_orginal_megadepth=False)
+                loaded_model = load_loftr(args, test_orginal_megadepth=False)
             elif self.method == "sp_lg":
-                matcher = load_sp_lg(args, test_orginal_megadepth=False)
+                loaded_model = load_sp_lg(args, test_orginal_megadepth=False)
             else:
                 raise ValueError(f"Unknown method: {self.method}")
 
-            self.matcher = matcher.from_paths
+            self.matcher = loaded_model.from_paths
 
         finally:
             os.chdir(original_dir)
@@ -118,15 +114,7 @@ class MinimaPipeline(BaseMatcher):
     def _build_method_args(
         self, weights_config: Dict[str, Any], weights_dir: Path
     ) -> Namespace:
-        """Build method-specific arguments for MINIMA.
-
-        Args:
-            weights_config: Weights configuration dictionary.
-            weights_dir: Path to weights directory.
-
-        Returns:
-            Namespace with method-specific arguments.
-        """
+        """Constructs the Namespace expected by MINIMA loading functions."""
         args = Namespace()
 
         if self.method == "xoftr":
@@ -148,21 +136,27 @@ class MinimaPipeline(BaseMatcher):
 
     @property
     def name(self) -> str:
-        """Return the matcher display name."""
+        """Returns the identifying name of the matcher."""
         return f"MINIMA ({self.method})"
 
-    def match(self, image0_path: Path, image1_path: Path) -> Dict[str, Any]:
-        """Match features between two images.
+    def match(
+        self, image0_path: Union[str, Path], image1_path: Union[str, Path]
+    ) -> Dict[str, Any]:
+        """Matches features between two images using the MINIMA engine.
 
         Args:
             image0_path: Path to the query image.
-            image1_path: Path to the reference/map image.
+            image1_path: Path to the reference image.
 
         Returns:
             Dictionary containing match results.
         """
         start_time = time.time()
         results = self._create_empty_result()
+
+        if self.matcher is None:
+            results["time"] = time.time() - start_time
+            return results
 
         try:
             match_result = self.matcher(str(image0_path), str(image1_path))
@@ -182,10 +176,10 @@ class MinimaPipeline(BaseMatcher):
             results["mkpts1"] = mkpts1
             results["mconf"] = mconf
 
-            H, inlier_mask = self.estimate_homography(mkpts0, mkpts1)
+            homography, inlier_mask = self.estimate_homography(mkpts0, mkpts1)
 
-            if H is not None:
-                results["homography"] = H
+            if homography is not None:
+                results["homography"] = homography
                 results["inliers"] = inlier_mask
                 results["success"] = True
 
@@ -199,28 +193,16 @@ class MinimaPipeline(BaseMatcher):
 
     def visualize_matches(
         self,
-        image0_path: Path,
-        image1_path: Path,
+        image0_path: Union[str, Path],
+        image1_path: Union[str, Path],
         mkpts0: np.ndarray,
         mkpts1: np.ndarray,
         inliers: np.ndarray,
-        output_path: Path,
+        output_path: Union[str, Path],
+        title: str = "Matches",
         homography: Optional[np.ndarray] = None,
     ) -> bool:
-        """Save a visualization of the feature matches.
-
-        Args:
-            image0_path: Path to query image.
-            image1_path: Path to map image.
-            mkpts0: Keypoints in query image.
-            mkpts1: Keypoints in map image.
-            inliers: Inlier mask.
-            output_path: Path to save visualization.
-            homography: Optional homography matrix.
-
-        Returns:
-            True if visualization saved, False otherwise.
-        """
+        """Saves a visualization image of the MINIMA match results."""
         try:
             from src.utils.visualization import create_match_visualization
         except ImportError:

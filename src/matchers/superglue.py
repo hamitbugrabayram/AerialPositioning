@@ -1,41 +1,42 @@
-"""SuperGlue feature matching pipeline.
+"""SuperGlue feature matching pipeline implementation.
 
 This module implements the SuperGlue matcher using SuperPoint features.
+It inherits from LightGluePipeline to reuse consistent preprocessing and
+postprocessing logic.
 """
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, Optional, Union
 
 import numpy as np
-import torch
 
-from .base import BaseMatcher
 from .lightglue import LightGluePipeline
 
-
 class SuperGluePipeline(LightGluePipeline):
-    """Feature matching pipeline using SuperGlue.
+    """Feature matching pipeline using the SuperGlue algorithm.
 
-    Inherits from LightGluePipeline but uses SuperGlue weights/config.
-    Maintains compatibility with existing LightGlue/SuperPoint infrastructure.
+    Inherits from LightGluePipeline but is specialized for SuperGlue weights.
+    Maintains compatibility with existing matching infrastructure.
     """
 
     def __init__(self, config: Dict[str, Any]) -> None:
-        """Initialize the SuperGlue pipeline.
+        """Initializes the SuperGlue pipeline.
 
         Args:
-            config: Configuration dictionary.
+            config: Configuration dictionary containing matcher parameters.
         """
         super().__init__(config)
         self.name_override = "SuperGlue"
 
     @property
     def name(self) -> str:
-        """Return the matcher display name."""
+        """Returns the identifying name of the matcher."""
         return self.name_override
 
-    def match(self, image0_path: Path, image1_path: Path) -> Dict[str, Any]:
-        """Match features between two images using SuperGlue logic.
+    def match(
+        self, image0_path: Union[str, Path], image1_path: Union[str, Path]
+    ) -> Dict[str, Any]:
+        """Matches features between two images using SuperGlue.
 
         Args:
             image0_path: Path to the query image.
@@ -48,28 +49,23 @@ class SuperGluePipeline(LightGluePipeline):
 
     def visualize_matches(
         self,
-        image0_path: Path,
-        image1_path: Path,
+        image0_path: Union[str, Path],
+        image1_path: Union[str, Path],
         mkpts0: np.ndarray,
         mkpts1: np.ndarray,
         inliers: np.ndarray,
-        output_path: Path,
-        title: str = "Matches"
+        output_path: Union[str, Path],
+        title: str = "Matches",
+        homography: Optional[np.ndarray] = None,
     ) -> bool:
-        """Visualize matches.
-
-        Args:
-            image0_path: Path to query image.
-            image1_path: Path to map image.
-            mkpts0: Keypoints in query image.
-            mkpts1: Keypoints in map image.
-            inliers: Inlier mask.
-            output_path: Path to save visualization.
-            title: Plot title.
-
-        Returns:
-            True if successful.
-        """
+        """Saves a visualization of the SuperGlue match results."""
         return super().visualize_matches(
-            image0_path, image1_path, mkpts0, mkpts1, inliers, output_path
+            image0_path,
+            image1_path,
+            mkpts0,
+            mkpts1,
+            inliers,
+            output_path,
+            title=title,
+            homography=homography,
         )

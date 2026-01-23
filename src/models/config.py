@@ -1,19 +1,13 @@
 """Configuration models for the satellite localization system.
-
 This module contains data classes for configuration and results management.
 """
-
 import warnings
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
-
 import yaml
-
-
 @dataclass
 class QueryResult:
     """Container for per-query localization results.
-
     Attributes:
         query_filename: Name of the query image file.
         best_map_filename: Name of the best matching map tile.
@@ -27,7 +21,6 @@ class QueryResult:
         error_meters: Localization error in meters.
         success: Whether localization was successful.
     """
-
     query_filename: str
     best_map_filename: Optional[str] = None
     inliers: int = -1
@@ -39,12 +32,9 @@ class QueryResult:
     predicted_longitude: Optional[float] = None
     error_meters: float = float('inf')
     success: bool = False
-
-
 @dataclass
 class LocalizationConfig:
     """Parsed localization configuration.
-
     Attributes:
         matcher_type: Type of matcher to use (lightglue, superglue, etc.).
         device: Compute device (cuda, cpu).
@@ -56,7 +46,6 @@ class LocalizationConfig:
         ransac_params: RANSAC configuration.
         localization_params: Localization process parameters.
     """
-
     matcher_type: str
     device: str
     data_paths: Dict[str, str]
@@ -66,24 +55,19 @@ class LocalizationConfig:
     matcher_params: Dict[str, Any]
     ransac_params: Dict[str, Any]
     localization_params: Dict[str, Any]
-
     @classmethod
     def from_yaml(cls, config_path: str) -> 'LocalizationConfig':
         """Load configuration from YAML file.
-
         Args:
             config_path: Path to the YAML configuration file.
-
         Returns:
             Parsed LocalizationConfig instance.
-
         Raises:
             FileNotFoundError: If config file doesn't exist.
             yaml.YAMLError: If config file is invalid.
         """
         with open(config_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
-
         localization_params = config.get('localization_params')
         if localization_params is None:
             localization_params = config.get('benchmark_params', {})
@@ -94,7 +78,6 @@ class LocalizationConfig:
                     DeprecationWarning,
                     stacklevel=2
                 )
-
         return cls(
             matcher_type=config.get('matcher_type', 'lightglue'),
             device=config.get('device', 'cuda'),
@@ -106,10 +89,8 @@ class LocalizationConfig:
             ransac_params=config.get('ransac_params', {}),
             localization_params=localization_params,
         )
-
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for pipeline initialization.
-
         Returns:
             Configuration as dictionary.
         """

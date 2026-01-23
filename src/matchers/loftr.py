@@ -1,4 +1,4 @@
-"""LoFTR feature matching pipeline.
+"""LoFTR feature matching pipeline implementation.
 
 This module implements the LoFTR (Detector-Free Local Feature Matching)
 matcher for dense feature matching between image pairs.
@@ -16,11 +16,11 @@ import torch
 
 from .base import BaseMatcher
 
-_loftr_path = Path(__file__).resolve().parent.parent.parent / 'matchers/LoFTR'
-if str(_loftr_path) not in sys.path:
-    if _loftr_path.exists():
-        sys.path.insert(0, str(_loftr_path))
-        _loftr_src_path = _loftr_path / 'src'
+_LOFTR_PATH = Path(__file__).resolve().parent.parent.parent / "matchers/LoFTR"
+if str(_LOFTR_PATH) not in sys.path:
+    if _LOFTR_PATH.exists():
+        sys.path.insert(0, str(_LOFTR_PATH))
+        _loftr_src_path = _LOFTR_PATH / "src"
         if _loftr_src_path.exists() and str(_loftr_src_path) not in sys.path:
             sys.path.insert(0, str(_loftr_src_path))
 
@@ -28,37 +28,32 @@ try:
     from loftr import LoFTR as LoFTRModel
     from loftr.utils.cvpr_ds_config import default_cfg as loftr_default_cfg
 except ImportError as e:
-    raise ImportError(f"Failed to import LoFTR components: {e}")
-
+    raise ImportError(f"Failed to import LoFTR components: {e}") from e
 
 class LoFTRPipeline(BaseMatcher):
-    """Feature matching pipeline using LoFTR.
+    """Feature matching pipeline using the LoFTR algorithm.
 
     LoFTR (Detector-Free Local Feature Matching with Transformers) is a
     dense matching method that doesn't require explicit keypoint detection.
 
     Attributes:
-        model: LoFTR model instance.
-        loftr_params: LoFTR-specific parameters.
+        model (LoFTRModel): The initialized LoFTR model.
+        loftr_params (Dict[str, Any]): Configuration specific to LoFTR.
     """
 
     def __init__(self, config: Dict[str, Any]) -> None:
-        """Initialize the LoFTR pipeline.
+        """Initializes the LoFTR pipeline with configured weights.
 
         Args:
-            config: Configuration dictionary with keys:
-                - device: Computation device ('cuda' or 'cpu')
-                - matcher_weights: Dict with 'loftr_weights_path' key
-                - matcher_params.loftr: Dict with model settings
-                - ransac_params: Dict with RANSAC settings
+            config: Configuration dictionary containing matcher parameters.
         """
         super().__init__(config)
         self._device = torch.device(self.device)
 
-        weights_config = config.get('matcher_weights', {})
-        self.loftr_params = config.get('matcher_params', {}).get('loftr', {})
+        weights_config = config.get("matcher_weights", {})
+        self.loftr_params = config.get("matcher_params", {}).get("loftr", {})
 
-        weights_path = weights_config.get('loftr_weights_path')
+        weights_path = weights_config.get("loftr_weights_path")
         if not weights_path or not Path(weights_path).is_file():
             raise FileNotFoundError(f"LoFTR weights not found: {weights_path}")
 
@@ -66,10 +61,10 @@ class LoFTRPipeline(BaseMatcher):
 
         model_config = deepcopy(loftr_default_cfg)
 
-        if 'temp_bug_fix' in self.loftr_params:
-            model_config['coarse']['temp_bug_fix'] = self.loftr_params['temp_bug_fix']
-        if 'match_thr' in self.loftr_params:
-            model_config['match_coarse']['thr'] = self.loftr_params['match_thr']
+        if "temp_bug_fix" in self.loftr_params:
+            model_config["coarse"]["temp_bug_fix"] = self.loftr_params["temp_bug_fix"]
+        if "match_thr" in self.loftr_params:
+            model_config["match_coarse"]["thr"] = self.loftr_params["match_thr"]
 
         print(f"Initializing LoFTR with weights: {weights_path}")
 
@@ -80,38 +75,23 @@ class LoFTRPipeline(BaseMatcher):
         print("LoFTR model initialized successfully.")
 
     def _load_weights(self, weights_path: str) -> None:
-        """Load model weights from checkpoint file.
-
-        Args:
-            weights_path: Path to the checkpoint file.
-        """
+        """Loads model weights from a checkpoint file."""
         try:
-            checkpoint = torch.load(weights_path, map_location='cpu')
-            state_dict = checkpoint.get('state_dict', checkpoint)
+            checkpoint = torch.load(weights_path, map_location="cpu")
+            state_dict = checkpoint.get("state_dict", checkpoint)
             self.model.load_state_dict(state_dict)
         except Exception as e:
-            raise RuntimeError(f"Error loading LoFTR checkpoint: {e}")
+            raise RuntimeError(f"Error loading LoFTR checkpoint: {e}") from e
 
     @property
     def name(self) -> str:
-        """Return the matcher display name."""
+        """Returns the identifying name of the matcher."""
         return f"LoFTR ({self._weights_name})"
 
     def _preprocess_image(
-        self,
-        image_path: Path
+        self, image_path: Path
     ) -> Tuple[Optional[torch.Tensor], Optional[np.ndarray], Optional[Tuple[int, int]]]:
-        """Load and preprocess an image for LoFTR.
-
-        Converts to grayscale, resizes ensuring divisibility by 8,
-        and creates the input tensor.
-
-        Args:
-            image_path: Path to the image file.
-
-        Returns:
-            Tuple of (tensor, scale_factors, original_dimensions).
-        """
+        """Loads and prepares an image for LoFTR dense matching."""
         try:
             image_bgr = cv2.imread(str(image_path))
             if image_bgr is None:
@@ -135,7 +115,8 @@ class LoFTRPipeline(BaseMatcher):
 
             image_gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
             interpolation = (
-                cv2.INTER_AREA if w_resized * h_resized < w_orig * h_orig
+                cv2.INTER_AREA
+                if w_resized * h_resized < w_orig * h_orig
                 else cv2.INTER_LINEAR
             )
             image_resized = cv2.resize(
@@ -147,28 +128,16 @@ class LoFTRPipeline(BaseMatcher):
             return (
                 image_tensor.to(self._device),
                 np.array([scale_w, scale_h]),
-                (w_orig, h_orig)
+                (w_orig, h_orig),
             )
 
         except Exception as e:
             print(f"Error preprocessing image {image_path.name}: {e}")
             return None, None, None
 
-    def _calculate_target_size(
-        self,
-        w_orig: int,
-        h_orig: int
-    ) -> Tuple[int, int]:
-        """Calculate target dimensions based on resize options.
-
-        Args:
-            w_orig: Original width.
-            h_orig: Original height.
-
-        Returns:
-            Tuple of (target_width, target_height).
-        """
-        resize_opt = self.loftr_params.get('resize')
+    def _calculate_target_size(self, w_orig: int, h_orig: int) -> Tuple[int, int]:
+        """Calculates target dimensions based on resize configurations."""
+        resize_opt = self.loftr_params.get("resize")
         target_w, target_h = w_orig, h_orig
 
         if isinstance(resize_opt, (list, tuple)):
@@ -186,18 +155,16 @@ class LoFTRPipeline(BaseMatcher):
         return target_w, target_h
 
     def match(
-        self,
-        image0_path: Union[str, Path],
-        image1_path: Union[str, Path]
+        self, image0_path: Union[str, Path], image1_path: Union[str, Path]
     ) -> Dict[str, Any]:
-        """Match features between two images.
+        """Performs dense feature matching between two images.
 
         Args:
             image0_path: Path to the query image.
             image1_path: Path to the reference/map image.
 
         Returns:
-            Dictionary containing match results.
+            Dictionary containing match coordinates and success status.
         """
         start_time = time.time()
         results = self._create_empty_result()
@@ -207,37 +174,37 @@ class LoFTRPipeline(BaseMatcher):
             img1, scale1, _ = self._preprocess_image(Path(image1_path))
 
             if img0 is None or img1 is None:
-                results['time'] = time.time() - start_time
+                results["time"] = time.time() - start_time
                 return results
 
-            batch = {'image0': img0, 'image1': img1}
+            batch = {"image0": img0, "image1": img1}
 
             with torch.no_grad():
                 self.model(batch)
 
-            mkpts0_loftr = batch['mkpts0_f'].cpu().numpy()
-            mkpts1_loftr = batch['mkpts1_f'].cpu().numpy()
-            mconf = batch['mconf'].cpu().numpy()
+            mkpts0_loftr = batch["mkpts0_f"].cpu().numpy()
+            mkpts1_loftr = batch["mkpts1_f"].cpu().numpy()
+            mconf = batch["mconf"].cpu().numpy()
 
             mkpts0 = mkpts0_loftr * scale0
             mkpts1 = mkpts1_loftr * scale1
 
-            results['mkpts0'] = mkpts0
-            results['mkpts1'] = mkpts1
-            results['mconf'] = mconf
+            results["mkpts0"] = mkpts0
+            results["mkpts1"] = mkpts1
+            results["mconf"] = mconf
 
-            H, inlier_mask = self.estimate_homography(mkpts0, mkpts1)
+            homography, inlier_mask = self.estimate_homography(mkpts0, mkpts1)
 
-            if H is not None:
-                results['homography'] = H
-                results['inliers'] = inlier_mask
-                results['success'] = True
+            if homography is not None:
+                results["homography"] = homography
+                results["inliers"] = inlier_mask
+                results["success"] = True
 
         except Exception as e:
             print(f"ERROR during LoFTR matching: {e}")
 
         finally:
-            results['time'] = time.time() - start_time
+            results["time"] = time.time() - start_time
 
         return results
 
@@ -249,22 +216,10 @@ class LoFTRPipeline(BaseMatcher):
         mkpts1: np.ndarray,
         inliers: np.ndarray,
         output_path: Union[str, Path],
-        title: str = "Matches"
+        title: str = "Matches",
+        homography: Optional[np.ndarray] = None,
     ) -> bool:
-        """Save a visualization of the feature matches.
-
-        Args:
-            image0_path: Path to the query image.
-            image1_path: Path to the reference image.
-            mkpts0: Matched keypoints in image 0.
-            mkpts1: Matched keypoints in image 1.
-            inliers: Boolean inlier mask.
-            output_path: Path to save the visualization.
-            title: Plot title.
-
-        Returns:
-            True if visualization was saved successfully.
-        """
+        """Saves a visualization image of the dense match result."""
         try:
             from src.utils.visualization import create_match_visualization
         except ImportError:
@@ -276,7 +231,7 @@ class LoFTRPipeline(BaseMatcher):
 
         text_info = [
             self.name,
-            f'Matches: {num_inliers} / {num_total}'
+            f"Matches: {num_inliers} / {num_total}",
         ]
 
         try:
@@ -290,7 +245,8 @@ class LoFTRPipeline(BaseMatcher):
                 title="LoFTR Matches",
                 text_info=text_info,
                 show_outliers=False,
-                target_height=600
+                target_height=600,
+                homography=homography,
             )
         except Exception as e:
             print(f"ERROR during visualization: {e}")

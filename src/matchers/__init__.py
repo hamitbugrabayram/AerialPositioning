@@ -21,7 +21,6 @@ __all__ = [
     'MinimaPipeline',
 ]
 
-
 def __getattr__(name: str):
     """Lazy import of pipeline classes to avoid loading all dependencies."""
     if name == 'LightGluePipeline':

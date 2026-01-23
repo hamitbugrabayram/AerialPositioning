@@ -1,198 +1,153 @@
+"""Bing Maps TileSystem utilities for geographic projections.
+This module implements methods used for Bing Maps tile system calculations,
+including Mercator projection, QuadKey generation, and coordinate conversions.
+Reference: https://msdn.microsoft.com/en-us/library/bb259689.aspx
 """
-__author__ = Linlin Chen
-__email__ = lchen96@hawk.iit.edu
-
-@Description:
-This module implements a set of static methods used for Bing maps tile system. 
-
-reference: https://msdn.microsoft.com/en-us/library/bb259689.aspx
-"""
-
-import os
-from math import cos, sin, pi, log, atan, exp, floor
-from itertools import chain
 import re
+from itertools import chain
+from math import atan, cos, exp, floor, log, pi, sin
+from typing import Tuple
 
-
-class TileSystem(object):
-    
-    EARTHRADIUS = 6378137
-    MINLAT, MAXLAT = -85.05112878, 85.05112878
-    MINLON, MAXLON = -180., 180.
-    MAXLEVEL = 23
-
+class TileSystem:
+    """Implements static methods for the Bing Maps tile system.
+    Attributes:
+        EARTH_RADIUS (int): Radius of the Earth in meters (WGS-84).
+        MIN_LAT (float): Minimum latitude supported by the projection.
+        MAX_LAT (float): Maximum latitude supported by the projection.
+        MIN_LON (float): Minimum longitude supported by the projection.
+        MAX_LON (float): Maximum longitude supported by the projection.
+        MAX_LEVEL (int): Maximum zoom level supported.
+    """
+    EARTH_RADIUS = 6378137
+    MIN_LAT, MAX_LAT = -85.05112878, 85.05112878
+    MIN_LON, MAX_LON = -180.0, 180.0
+    MAX_LEVEL = 23
     @staticmethod
-    def clip(val, minval, maxval):
-        """Clips a number to be specified minval and maxval values.
-        
-        Arguments:
-            val {[double]} -- [value to be clipped]
-            minval {[double]} -- [minimal value bound]
-            maxval {[double]} -- [maximal value bound]
-        
+    def clip(val: float, min_val: float, max_val: float) -> float:
+        """Clips a number to be within specified minimum and maximum bounds.
+        Args:
+            val: Value to be clipped.
+            min_val: Minimum value bound.
+            max_val: Maximum value bound.
         Returns:
-            [double] -- [clipped value]
+            The clipped value.
         """
-        return min(max(val, minval), maxval)
-
+        return min(max(val, min_val), max_val)
     @staticmethod
-    def map_size(level):
-        """Determines the map width and height (in pixels) at a specified level
-        
-        Arguments:
-            level {[int]} -- [level of detail, from 1 (lowest detail) to 23 (highest detail)]
-
+    def map_size(level: int) -> int:
+        """Determines the map width and height (in pixels) at a specified level.
+        Args:
+            level: Level of detail, from 1 to 23.
         Returns:
-            [int] -- [The map width and height in pixels (width == height)]
+            The map width and height in pixels.
         """
         return 256 << level
-
     @staticmethod
-    def ground_resolution(lat, level):
-        """Determines the ground resolution (in meters per pixel) at a specified latitude and level of detail
-        
-        Arguments:
-            lat {[double]} -- [latitude in degrees at which to measure the ground resolution]
-            level {[int]} -- [level of detail, from 1 (lowest detail) to 23 (highest detail)]
-        
+    def ground_resolution(lat: float, level: int) -> float:
+        """Determines the ground resolution (meters per pixel) at a latitude.
+        Args:
+            lat: Latitude in degrees.
+            level: Level of detail, from 1 to 23.
         Returns:
-            [double] -- [The ground resolution, in meters per pixel]
+            The ground resolution in meters per pixel.
         """
-
-        lat = TileSystem.clip(lat, TileSystem.MINLAT, TileSystem.MAXLAT)
-        return cos(lat * pi / 180) * 2 * pi * TileSystem.EARTHRADIUS / TileSystem.map_size(level)
-
-
+        lat = TileSystem.clip(lat, TileSystem.MIN_LAT, TileSystem.MAX_LAT)
+        return (
+            cos(lat * pi / 180)
+            * 2
+            * pi
+            * TileSystem.EARTH_RADIUS
+            / TileSystem.map_size(level)
+        )
     @staticmethod
-    def map_scale (lat, level, screenDpi):
-        """Determines the map scale at a specified latitude, level of detail, and screen resolution
-        
-        Arguments:
-            lat {[double]} -- [latitude in degrees at which to measure the ground resolution]
-            level {[type]} -- [level of detail, from 1 (lowest detail) to 23 (highest detail)]
-            screenDpi {[type]} -- [Resolution of the screen, in dots per inch]
-        
+    def map_scale(lat: float, level: int, screen_dpi: float) -> float:
+        """Determines the map scale at a specified latitude and level.
+        Args:
+            lat: Latitude in degrees.
+            level: Level of detail, from 1 to 23.
+            screen_dpi: Resolution of the screen in dots per inch.
         Returns:
-            [double] -- [The map scale, expressed as the denominator N of the ratio 1: N]
+            The map scale, expressed as the denominator N of the ratio 1:N.
         """
-
-        return TileSystem.ground_resolution(lat, level) * screenDpi / 0.0254
-
+        return TileSystem.ground_resolution(lat, level) * screen_dpi / 0.0254
     @staticmethod
-    def latlong_to_pixelXY(lat, long, level):
-        """Converts a point from latitude/longitude WGS-84 coordinates (in degrees)
-        into pixel XY coordinates a specified level of detail
-        
-        Arguments:
-            lat {[double]} -- [Latitude of the point, in degrees]
-            long {[double]} -- [Longitude of the point, in degrees]
-            level {[int]} -- [Level of detail, from 1 (lowest detail) to 23 (highest detail)]
-        
+    def latlong_to_pixel_xy(lat: float, lon: float, level: int) -> Tuple[int, int]:
+        """Converts lat/long WGS-84 coordinates into pixel XY coordinates.
+        Args:
+            lat: Latitude of the point in degrees.
+            lon: Longitude of the point in degrees.
+            level: Level of detail, from 1 to 23.
         Returns:
-            [int, int] -- [X coordinates in pixels; Y coordinates in pixels]
+            A tuple of (pixel_x, pixel_y).
         """
-
-        lat = TileSystem.clip(lat, TileSystem.MINLAT, TileSystem.MAXLAT)
-        long = TileSystem.clip(long, TileSystem.MINLON,  TileSystem.MAXLON)
-
-        x = (long + 180) / 360
-        sinlat = sin(lat * pi / 180)
-        y = 0.5 - log((1 + sinlat) / (1 - sinlat)) / (4 * pi)
-
-        mapsize = TileSystem.map_size(level)
-        pixelX, pixelY = floor(TileSystem.clip(x * mapsize + 0.5, 0, mapsize - 1)), \
-                        floor(TileSystem.clip(y * mapsize + 0.5, 0, mapsize - 1))
-        return pixelX, pixelY
-
-
+        lat = TileSystem.clip(lat, TileSystem.MIN_LAT, TileSystem.MAX_LAT)
+        lon = TileSystem.clip(lon, TileSystem.MIN_LON, TileSystem.MAX_LON)
+        x = (lon + 180) / 360
+        sin_lat = sin(lat * pi / 180)
+        y = 0.5 - log((1 + sin_lat) / (1 - sin_lat)) / (4 * pi)
+        size = TileSystem.map_size(level)
+        pixel_x = int(floor(TileSystem.clip(x * size + 0.5, 0, size - 1)))
+        pixel_y = int(floor(TileSystem.clip(y * size + 0.5, 0, size - 1)))
+        return pixel_x, pixel_y
     @staticmethod
-    def pixelXY_to_latlong(pixelX, pixelY, level):
-        """Converts a pixel from pixel XY coordinates at a specified level of detail
-        into latitude/longitude WGS-84 coordinates (in degrees)
-        
-        Arguments:
-            pixelX {[int]} -- [X coordinate of the point, in pixels.]
-            pixelY {[int]} -- [Y coordinate of the point, in pixels.]
-            level {[int]} -- [Level of detail, from 1 (lowest detail) to 23 (highest detail)]
-        
+    def pixel_xy_to_latlong(pixel_x: int, pixel_y: int, level: int) -> Tuple[float, float]:
+        """Converts pixel XY coordinates at a specified level into lat/long.
+        Args:
+            pixel_x: X pixel coordinate.
+            pixel_y: Y pixel coordinate.
+            level: Level of detail, from 1 to 23.
         Returns:
-            [double, double] -- [Latitude in degrees; Longitude in degrees]
+            A tuple of (latitude, longitude) in degrees.
         """
-
-        mapsize = TileSystem.map_size(level)
-        x = TileSystem.clip(pixelX, 0, mapsize - 1) / mapsize - 0.5
-        y = 0.5 - TileSystem.clip(pixelY, 0, mapsize - 1) / mapsize
-
-        lat = 90 - 360 * atan(exp(-y * 2 * pi)) / pi 
-        long = 360 * x 
-        return lat, long
-
-
+        size = TileSystem.map_size(level)
+        x = TileSystem.clip(pixel_x, 0, size - 1) / size - 0.5
+        y = 0.5 - TileSystem.clip(pixel_y, 0, size - 1) / size
+        lat = 90 - 360 * atan(exp(-y * 2 * pi)) / pi
+        lon = 360 * x
+        return lat, lon
     @staticmethod
-    def pixelXY_to_tileXY(pixelX, pixelY):
-        """Converts pixel XY coordinates into tile XY coordinates of the tile containing the specified pixel.
-        
-        Arguments:
-            pixelX {[int]} -- [Pixel X coordinate]
-            pixelY {[int]} -- [Pixel Y coordinate]
-        
+    def pixel_xy_to_tile_xy(pixel_x: int, pixel_y: int) -> Tuple[int, int]:
+        """Converts pixel XY coordinates into tile XY coordinates.
+        Args:
+            pixel_x: Pixel X coordinate.
+            pixel_y: Pixel Y coordinate.
         Returns:
-            [int, int] -- [Tile X coordinate; Tile Y coordinate]
+            A tuple of (tile_x, tile_y).
         """
-
-        return floor(pixelX / 256), floor(pixelY / 256)
-
-
+        return int(floor(pixel_x / 256)), int(floor(pixel_y / 256))
     @staticmethod
-    def tileXY_to_pixelXY(tileX, tileY):
-        """Converts tile XY coordinates into pixel XY coordinates of the upper-left pixel of the specified tile
-        
-        Arguments:
-            tileX {[int]} -- [Tile X coordinate]
-            tileY {[int]} -- [Tile Y coordinate]
-        
+    def tile_xy_to_pixel_xy(tile_x: int, tile_y: int) -> Tuple[int, int]:
+        """Converts tile XY coordinates into upper-left pixel XY coordinates.
+        Args:
+            tile_x: Tile X coordinate.
+            tile_y: Tile Y coordinate.
         Returns:
-            [int, int] -- [pixel X coordinate; pixel Y coordinate]
+            A tuple of (pixel_x, pixel_y).
         """
-
-        return tileX * 256, tileY * 256
-
-
+        return tile_x * 256, tile_y * 256
     @staticmethod
-    def tileXY_to_quadkey(tileX, tileY, level):
-        """Converts tile XY coordinates into a QuadKey at a specified level of detail
-        interleaving tileY with tileX
-        
-        Arguments:
-            tileX {[int]} -- [Tile X coordinate]
-            tileY {[int]} -- [Tile Y coordinate]
-            level {[int]} -- [Level of detail, from 1 (lowest detail) to 23 (highest detail)]
-        
+    def tile_xy_to_quadkey(tile_x: int, tile_y: int, level: int) -> str:
+        """Converts tile XY coordinates into a QuadKey.
+        Args:
+            tile_x: Tile X coordinate.
+            tile_y: Tile Y coordinate.
+            level: Level of detail.
         Returns:
-            [string] -- [A string containing the QuadKey]
+            The QuadKey string.
         """
-
-        tileXbits = '{0:0{1}b}'.format(tileX, level)
-        tileYbits = '{0:0{1}b}'.format(tileY, level)
-        
-        quadkeybinary = ''.join(chain(*zip(tileYbits, tileXbits)))
-        return ''.join([str(int(num, 2)) for num in re.findall('..?', quadkeybinary)])
-        #return ''.join(i for j in zip(tileYbits, tileXbits) for i in j)
-        
+        tile_x_bits = "{0:0{1}b}".format(tile_x, level)
+        tile_y_bits = "{0:0{1}b}".format(tile_y, level)
+        quadkey_binary = "".join(chain(*zip(tile_y_bits, tile_x_bits)))
+        return "".join([str(int(num, 2)) for num in re.findall("..?", quadkey_binary)])
     @staticmethod
-    def quadkey_to_tileXY(quadkey):
-        """Converts a QuadKey into tile XY coordinate
-        
-        Arguments:
-            quadkey {[string]} -- [QuadKey of the tile]
-        
+    def quadkey_to_tile_xy(quadkey: str) -> Tuple[int, int]:
+        """Converts a QuadKey into tile XY coordinates.
+        Args:
+            quadkey: QuadKey string of the tile.
         Returns:
-            [int, int] -- [Tile X coordinate; Tile Y coordinate]
+            A tuple of (tile_x, tile_y).
         """
-        quadkeybinary = ''.join(['{0:02b}'.format(int(num)) for num in quadkey])
-        tileX, tileY = int(quadkeybinary[1::2], 2), int(quadkeybinary[::2], 2)
-        return tileX, tileY
-
-
-
-
+        quadkey_binary = "".join(["{0:02b}".format(int(num)) for num in quadkey])
+        tile_x = int(quadkey_binary[1::2], 2)
+        tile_y = int(quadkey_binary[::2], 2)
+        return tile_x, tile_y

@@ -1,0 +1,41 @@
+# Base configuration with placeholders
+camera_model:
+  focal_length: 4.5
+  hfov_deg: 82.9
+  resolution_height: 2652
+  resolution_width: 3976
+
+data_paths:
+  map_dir: "PLACEHOLDER"
+  map_metadata: "PLACEHOLDER"
+  output_dir: "PLACEHOLDER"
+  query_dir: "PLACEHOLDER"
+  query_metadata: "PLACEHOLDER"
+
+device: cuda
+localization_params:
+  min_inliers_for_success: 75
+  save_visualization: true
+
+matcher_type: gim
+matcher_weights:
+  gim_model_type: lightglue
+  gim_weights_path: matchers/gim/weights/gim_lightglue_100h.ckpt
+  lightglue_features: superpoint
+  loftr_weights_path: matchers/LoFTR/weights/outdoor_ds.ckpt
+
+preprocessing:
+  adaptive_yaw: false
+  enabled: true
+  resize_target: [1024]
+  save_processed: true
+  steps: ["resize", "warp"]
+  target_gimbal_pitch: -90.0
+  target_gimbal_roll: 0.0
+  target_gimbal_yaw: 0.0
+
+ransac_params:
+  confidence: 0.999
+  max_iter: 10000
+  method: RANSAC
+  reproj_threshold: 5.0

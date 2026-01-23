@@ -13,22 +13,18 @@ from typing import Any, Dict, Optional, Tuple, Union
 import cv2
 import numpy as np
 import torch
-import torch.nn.functional as F
 
 from .base import BaseMatcher
 
-_gim_path = Path(__file__).resolve().parent.parent.parent / "matchers/gim"
-if str(_gim_path) not in sys.path:
-    if _gim_path.exists():
-        sys.path.insert(0, str(_gim_path))
+_GIM_PATH = Path(__file__).resolve().parent.parent.parent / "matchers/gim"
+if str(_GIM_PATH) not in sys.path:
+    if _GIM_PATH.exists():
+        sys.path.insert(0, str(_GIM_PATH))
 
 try:
     from tools import get_padding_size
-except ImportError as e:
-    # This might fail if tools is not in path, but usually it is fine.
-    # We will handle network imports lazily.
+except ImportError:
     pass
-
 
 def preprocess_for_gim(
     image: np.ndarray,
@@ -37,17 +33,17 @@ def preprocess_for_gim(
     dfactor: int = 8,
     device: Optional[torch.device] = None,
 ) -> Tuple[Optional[torch.Tensor], Optional[np.ndarray], Optional[Tuple[int, int]]]:
-    """Preprocess an image for GIM models.
+    """Preprocesses an image for GIM models.
 
     Args:
-        image: Input image as numpy array (HxW or HxWxC).
+        image: Input image as numpy array.
         grayscale: If True, convert to grayscale.
         resize_max: Maximum dimension for resizing.
-        dfactor: Ensure dimensions are divisible by this factor.
-        device: Torch device to use for processing.
+        dfactor: Factor for ensuring dimensions are divisible.
+        device: Torch device for processing.
 
     Returns:
-        Tuple of (tensor, scale_to_original, original_size_wh).
+        A tuple of (normalized_tensor, scale_to_original, original_size_wh).
     """
     if image is None or image.size == 0:
         return None, None, None
@@ -55,13 +51,13 @@ def preprocess_for_gim(
     try:
         original_shape = image.shape
         original_size_wh = (original_shape[1], original_shape[0])
-        h, w = original_shape[:2]
+        height, width = original_shape[:2]
 
-        new_w, new_h = w, h
+        new_w, new_h = width, height
         if resize_max and resize_max > 0:
-            scale = resize_max / max(h, w)
+            scale = resize_max / max(height, width)
             if scale < 1.0:
-                new_w, new_h = int(round(w * scale)), int(round(h * scale))
+                new_w, new_h = int(round(width * scale)), int(round(height * scale))
 
         if grayscale:
             if image.ndim == 3:
@@ -72,7 +68,7 @@ def preprocess_for_gim(
             elif image.ndim == 3:
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-        if (new_w, new_h) != (w, h) and new_w > 0 and new_h > 0:
+        if (new_w, new_h) != (width, height) and new_w > 0 and new_h > 0:
             image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
         cur_h, cur_w = image.shape[:2]
@@ -105,29 +101,28 @@ def preprocess_for_gim(
         print(f"ERROR during GIM preprocessing: {e}")
         return None, None, None
 
-
 class GimPipeline(BaseMatcher):
     """Feature matching pipeline using GIM (Generalized Image Matching).
 
     GIM provides a unified interface for DKM, LoFTR, and LightGlue.
 
     Attributes:
-        model_type: Selected GIM variant.
-        model: The matcher model instance.
-        detector: Feature detector (for LightGlue variant only).
+        model_type (str): Selected GIM variant ('dkm', 'loftr', 'lightglue').
+        model (Any): The initialized matcher model instance.
+        detector (Any): Feature detector instance (for LightGlue).
     """
 
     SUPPORTED_MODELS = {"dkm", "loftr", "lightglue"}
 
     def __init__(self, config: Dict[str, Any]) -> None:
-        """Initialize the GIM pipeline.
+        """Initializes the GIM pipeline.
 
         Args:
             config: Configuration dictionary.
 
         Raises:
-            FileNotFoundError: If weights file is not found.
-            ValueError: If unsupported model type is specified.
+            FileNotFoundError: If weights file is missing.
+            ValueError: If an unsupported model type is specified.
         """
         super().__init__(config)
         self._device = torch.device(self.device)
@@ -147,18 +142,17 @@ class GimPipeline(BaseMatcher):
             raise FileNotFoundError(f"GIM weights not found: {self.weights_path}")
 
         print(f"Initializing GIM with model type: {self.model_type}")
+        self.model = None
+        self.detector = None
         self._load_model()
 
     @property
     def name(self) -> str:
-        """Return the matcher display name."""
+        """Returns the identifying name of the matcher."""
         return f"GIM ({self.model_type.upper()})"
 
     def _load_model(self) -> None:
-        """Load the specified GIM model and weights."""
-        self.model = None
-        self.detector = None
-
+        """Loads the GIM model and associated weights."""
         state_dict = torch.load(self.weights_path, map_location="cpu")
         if isinstance(state_dict, dict) and "state_dict" in state_dict:
             state_dict = state_dict["state_dict"]
@@ -175,13 +169,13 @@ class GimPipeline(BaseMatcher):
 
         print(f"GIM model '{self.model_type}' initialized successfully.")
 
-    def _init_dkm(self, state_dict: Dict) -> None:
-        """Initialize DKM model."""
+    def _init_dkm(self, state_dict: Dict[str, torch.Tensor]) -> None:
+        """Initializes the DKM backend."""
         from networks.dkm.models.model_zoo.DKMv3 import DKMv3
 
-        h = self.gim_params.get("dkm_h", 672)
-        w = self.gim_params.get("dkm_w", 896)
-        self.model = DKMv3(weights=None, h=h, w=w)
+        height = self.gim_params.get("dkm_h", 672)
+        width = self.gim_params.get("dkm_w", 896)
+        self.model = DKMv3(weights=None, h=height, w=width)
 
         clean_sd = {
             k.replace("model.", "", 1): v
@@ -190,20 +184,20 @@ class GimPipeline(BaseMatcher):
         }
         self.model.load_state_dict(clean_sd, strict=False)
 
-    def _init_loftr(self, state_dict: Dict) -> None:
-        """Initialize LoFTR model."""
+    def _init_loftr(self, state_dict: Dict[str, torch.Tensor]) -> None:
+        """Initializes the LoFTR backend."""
+        from networks.loftr.config import get_cfg_defaults
         from networks.loftr.loftr import LoFTR
         from networks.loftr.misc import lower_config
-        from networks.loftr.config import get_cfg_defaults
 
         loftr_config = lower_config(get_cfg_defaults())["loftr"]
         self.model = LoFTR(loftr_config)
         self.model.load_state_dict(state_dict)
 
-    def _init_lightglue(self, state_dict: Dict) -> None:
-        """Initialize LightGlue detector and matcher."""
-        from networks.lightglue.superpoint import SuperPoint
+    def _init_lightglue(self, state_dict: Dict[str, torch.Tensor]) -> None:
+        """Initializes the LightGlue backend."""
         from networks.lightglue.models.matchers.lightglue import LightGlue
+        from networks.lightglue.superpoint import SuperPoint
 
         max_keypoints = self.gim_params.get("gim_lightglue_max_keypoints", 2048)
 
@@ -240,15 +234,7 @@ class GimPipeline(BaseMatcher):
     def _read_and_preprocess(
         self, image_path: Path, grayscale: bool = False
     ) -> Tuple[Optional[torch.Tensor], Optional[np.ndarray], Optional[Tuple[int, int]]]:
-        """Read and preprocess an image file.
-
-        Args:
-            image_path: Path to the image file.
-            grayscale: Whether to convert to grayscale.
-
-        Returns:
-            Tuple of (tensor, scale_factors, original_dimensions).
-        """
+        """Reads and prepares an image file for matching."""
         mode = cv2.IMREAD_GRAYSCALE if grayscale else cv2.IMREAD_COLOR
         image = cv2.imread(str(image_path), mode)
 
@@ -275,23 +261,19 @@ class GimPipeline(BaseMatcher):
     def match(
         self, image0_path: Union[str, Path], image1_path: Union[str, Path]
     ) -> Dict[str, Any]:
-        """Match features between two images.
+        """Matches features between query and map images.
 
         Args:
             image0_path: Path to the query image.
-            image1_path: Path to the reference/map image.
+            image1_path: Path to the satellite map tile.
 
         Returns:
-            Dictionary containing match results.
+            Dictionary containing match coordinates and success status.
         """
         start_time = time.time()
         results = self._create_empty_result()
 
         try:
-            # Check if model type requires grayscale
-            # LoFTR usually works on grayscale, but some weights/configs might be RGB
-            # The error 'weight of size [64, 3, 7, 7], expected input ... to have 3 channels'
-            # indicates this model expects RGB.
             use_grayscale = self.model_type in ["lightglue"]
 
             image0, scale0, orig_size0 = self._read_and_preprocess(
@@ -301,12 +283,10 @@ class GimPipeline(BaseMatcher):
                 Path(image1_path), grayscale=use_grayscale
             )
 
-            if image0 is None or image1 is None:
+            if image0 is None or image1 is None or orig_size0 is None or orig_size1 is None:
                 results["time"] = time.time() - start_time
                 return results
 
-            # Convert scales to tensor for LoFTR internal use (coarse_matching.py indexes them)
-            # scale0 is (2,), we make it (1, 2) for batch size 1
             scale0_t = torch.from_numpy(scale0).float().to(self._device).unsqueeze(0)
             scale1_t = torch.from_numpy(scale1).float().to(self._device).unsqueeze(0)
 
@@ -324,13 +304,11 @@ class GimPipeline(BaseMatcher):
                 data["gray0"] = image0
                 data["gray1"] = image1
 
-            # Ensure color keys are present as some models expect them
             data["color0"] = image0
             data["color1"] = image1
 
             kpts0, kpts1, mconf = self._run_matching(data)
 
-            # Ensure kpts are on CPU
             if isinstance(kpts0, torch.Tensor):
                 kpts0_np = kpts0.detach().cpu().numpy()
             else:
@@ -341,12 +319,6 @@ class GimPipeline(BaseMatcher):
             else:
                 kpts1_np = kpts1
 
-            # Ensure scale is numpy (it should be)
-            if isinstance(scale0, torch.Tensor):
-                scale0 = scale0.detach().cpu().numpy()
-            if isinstance(scale1, torch.Tensor):
-                scale1 = scale1.detach().cpu().numpy()
-
             mkpts0 = kpts0_np * scale0
             mkpts1 = kpts1_np * scale1
 
@@ -354,10 +326,10 @@ class GimPipeline(BaseMatcher):
             results["mkpts1"] = mkpts1
             results["mconf"] = mconf.cpu().numpy()
 
-            H, inlier_mask = self.estimate_homography(mkpts0, mkpts1)
+            homography, inlier_mask = self.estimate_homography(mkpts0, mkpts1)
 
-            if H is not None:
-                results["homography"] = H
+            if homography is not None:
+                results["homography"] = homography
                 results["inliers"] = inlier_mask
                 results["success"] = True
 
@@ -372,7 +344,7 @@ class GimPipeline(BaseMatcher):
     def _run_matching(
         self, data: Dict[str, Any]
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Run the model-specific matching logic."""
+        """Dispatches data to the correct matching backend."""
         empty = (
             torch.empty((0, 2), device=self._device),
             torch.empty((0, 2), device=self._device),
@@ -384,9 +356,9 @@ class GimPipeline(BaseMatcher):
 
             if self.model_type == "dkm":
                 return self._match_dkm(data)
-            elif self.model_type == "loftr":
+            if self.model_type == "loftr":
                 return self._match_loftr(data)
-            elif self.model_type == "lightglue":
+            if self.model_type == "lightglue":
                 return self._match_lightglue(data)
 
         return empty
@@ -394,7 +366,7 @@ class GimPipeline(BaseMatcher):
     def _match_dkm(
         self, data: Dict[str, Any]
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Match using DKM (dense matching)."""
+        """DKM-specific matching logic."""
         image0, image1 = data["image0"], data["image1"]
 
         target_h = self.gim_params.get("dkm_h", 672)
@@ -447,7 +419,7 @@ class GimPipeline(BaseMatcher):
     def _match_loftr(
         self, data: Dict[str, Any]
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Match using LoFTR."""
+        """LoFTR-specific matching logic."""
         self.model(data)
 
         kpts0 = data.get("mkpts0_f")
@@ -459,7 +431,7 @@ class GimPipeline(BaseMatcher):
     def _match_lightglue(
         self, data: Dict[str, Any]
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Match using LightGlue."""
+        """LightGlue-specific matching logic."""
         empty = (
             torch.empty((0, 2), device=self._device),
             torch.empty((0, 2), device=self._device),
@@ -527,21 +499,7 @@ class GimPipeline(BaseMatcher):
         title: str = "Matches",
         homography: Optional[np.ndarray] = None,
     ) -> bool:
-        """Save a visualization of the feature matches.
-
-        Args:
-            image0_path: Path to the query image.
-            image1_path: Path to the reference image.
-            mkpts0: Matched keypoints in image 0.
-            mkpts1: Matched keypoints in image 1.
-            inliers: Boolean inlier mask.
-            output_path: Path to save the visualization.
-            title: Plot title.
-            homography: Optional homography matrix to visualize projection.
-
-        Returns:
-            True if visualization was saved successfully.
-        """
+        """Saves a visualization of the feature matches."""
         try:
             from src.utils.visualization import create_match_visualization
         except ImportError:

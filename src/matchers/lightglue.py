@@ -1,4 +1,4 @@
-"""LightGlue feature matching pipeline.
+"""LightGlue feature matching pipeline implementation.
 
 This module implements the LightGlue matcher with SuperPoint or DISK
 feature extraction for image matching and localization.
@@ -7,46 +7,41 @@ feature extraction for image matching and localization.
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 import numpy as np
 import torch
 
 from .base import BaseMatcher
 
-_lightglue_path = Path(__file__).parent.parent.parent / "matchers/LightGlue"
-if str(_lightglue_path) not in sys.path:
-    sys.path.insert(0, str(_lightglue_path))
+_LIGHTGLUE_PATH = Path(__file__).parent.parent.parent / "matchers/LightGlue"
+if str(_LIGHTGLUE_PATH) not in sys.path:
+    sys.path.insert(0, str(_LIGHTGLUE_PATH))
 
 try:
-    from lightglue import LightGlue, SuperPoint, DISK
+    from lightglue import DISK, LightGlue, SuperPoint
     from lightglue.utils import load_image, rbd
 except ImportError as e:
-    raise ImportError(f"Failed to import LightGlue components: {e}")
-
+    raise ImportError(f"Failed to import LightGlue components: {e}") from e
 
 class LightGluePipeline(BaseMatcher):
-    """Feature matching pipeline using LightGlue.
+    """Feature matching pipeline using the LightGlue framework.
 
     LightGlue is a lightweight and accurate feature matcher that works
-    with various local feature descriptors (SuperPoint, DISK).
+    with various local feature descriptors like SuperPoint and DISK.
 
     Attributes:
-        extractor: Feature extractor (SuperPoint or DISK).
-        matcher: LightGlue matcher instance.
+        extractor (Any): The feature extractor instance (SuperPoint or DISK).
+        matcher (Any): The LightGlue matcher instance.
     """
 
     SUPPORTED_FEATURES = ("superpoint", "disk")
 
     def __init__(self, config: Dict[str, Any]) -> None:
-        """Initialize the LightGlue pipeline.
+        """Initializes the LightGlue pipeline with configured extractors.
 
         Args:
-            config: Configuration dictionary with keys:
-                - device: Computation device ('cuda' or 'cpu')
-                - matcher_weights: Dict with 'lightglue_features' key
-                - matcher_params.lightglue: Dict with extractor settings
-                - ransac_params: Dict with RANSAC settings
+            config: Configuration dictionary containing matcher parameters.
         """
         super().__init__(config)
         self._device = torch.device(self.device)
@@ -78,18 +73,11 @@ class LightGluePipeline(BaseMatcher):
 
     @property
     def name(self) -> str:
-        """Return the matcher display name."""
+        """Returns the identifying name of the matcher."""
         return f"LightGlue ({self._feature_type})"
 
     def _preprocess_image(self, image_path: Path) -> Optional[torch.Tensor]:
-        """Load and preprocess an image for LightGlue.
-
-        Args:
-            image_path: Path to the image file.
-
-        Returns:
-            Preprocessed image tensor, or None on error.
-        """
+        """Loads and prepares an image for extraction."""
         try:
             image = load_image(image_path)
             return image.to(self._device)
@@ -97,12 +85,14 @@ class LightGluePipeline(BaseMatcher):
             print(f"Error loading image {image_path.name}: {e}")
             return None
 
-    def match(self, image0_path: Path, image1_path: Path) -> Dict[str, Any]:
-        """Match features between two images.
+    def match(
+        self, image0_path: Union[str, Path], image1_path: Union[str, Path]
+    ) -> Dict[str, Any]:
+        """Matches features between query and reference images.
 
         Args:
             image0_path: Path to the query image.
-            image1_path: Path to the reference/map image.
+            image1_path: Path to the satellite map tile.
 
         Returns:
             Dictionary containing match results.
@@ -111,8 +101,8 @@ class LightGluePipeline(BaseMatcher):
         results = self._create_empty_result()
 
         try:
-            image0 = self._preprocess_image(image0_path)
-            image1 = self._preprocess_image(image1_path)
+            image0 = self._preprocess_image(Path(image0_path))
+            image1 = self._preprocess_image(Path(image1_path))
 
             if image0 is None or image1 is None:
                 results["time"] = time.time() - start_time
@@ -134,10 +124,10 @@ class LightGluePipeline(BaseMatcher):
             results["mkpts0"] = mkpts0
             results["mkpts1"] = mkpts1
 
-            H, inlier_mask = self.estimate_homography(mkpts0, mkpts1)
+            homography, inlier_mask = self.estimate_homography(mkpts0, mkpts1)
 
-            if H is not None:
-                results["homography"] = H
+            if homography is not None:
+                results["homography"] = homography
                 results["inliers"] = inlier_mask
                 results["success"] = True
 
@@ -151,26 +141,16 @@ class LightGluePipeline(BaseMatcher):
 
     def visualize_matches(
         self,
-        image0_path: Path,
-        image1_path: Path,
+        image0_path: Union[str, Path],
+        image1_path: Union[str, Path],
         mkpts0: np.ndarray,
         mkpts1: np.ndarray,
         inliers: np.ndarray,
-        output_path: Path,
+        output_path: Union[str, Path],
+        title: str = "Matches",
+        homography: Optional[np.ndarray] = None,
     ) -> bool:
-        """Save a visualization of the feature matches.
-
-        Args:
-            image0_path: Path to the query image.
-            image1_path: Path to the reference image.
-            mkpts0: Matched keypoints in image 0.
-            mkpts1: Matched keypoints in image 1.
-            inliers: Boolean inlier mask.
-            output_path: Path to save the visualization.
-
-        Returns:
-            True if visualization was saved successfully.
-        """
+        """Saves a visualization image of the match result."""
         try:
             from src.utils.visualization import create_match_visualization
         except ImportError:
@@ -197,6 +177,7 @@ class LightGluePipeline(BaseMatcher):
                 text_info=text_info,
                 show_outliers=False,
                 target_height=600,
+                homography=homography,
             )
         except Exception as e:
             print(f"ERROR during visualization: {e}")
