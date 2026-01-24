@@ -1,6 +1,7 @@
-"""Utility helper functions for GPS calculations and localization.
+"""Utility helper functions for geographic calculations and visual localization.
+
 This module provides essential functions for:
-- Coordinate system conversions (GPS to pixel)
+- Coordinate system conversions (geographic to pixel)
 - Distance calculations (Haversine formula)
 - Localization error computation
 - Mercator projection for Bing Maps tile system
@@ -79,14 +80,17 @@ def latlon_to_pixel(
     return None
 
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Calculates the great-circle distance between two GPS coordinates.
+    """Calculates the great-circle distance between two geographic coordinates.
+
     Uses the Haversine formula to compute the shortest distance over
     the Earth's surface.
+
     Args:
         lat1: Latitude of point 1 in degrees.
         lon1: Longitude of point 1 in degrees.
         lat2: Latitude of point 2 in degrees.
         lon2: Longitude of point 2 in degrees.
+
     Returns:
         Distance in meters. Returns infinity on calculation error.
     """
@@ -111,13 +115,16 @@ def calculate_predicted_gps(
     normalized_center_xy: Optional[Tuple[float, float]],
     map_shape: Optional[Tuple[int, ...]] = None,
 ) -> Tuple[Optional[float], Optional[float]]:
-    """Converts normalized map coordinates to GPS coordinates using Mercator projection.
+    """Converts normalized map coordinates to geographic coordinates using Mercator projection.
+
     Uses Bing Maps TileSystem for accurate Mercator projection when available.
     Falls back to linear interpolation if TileSystem is not available.
+
     Args:
         map_metadata: Dictionary containing map corner coordinates and Level.
         normalized_center_xy: Normalized coordinates (0-1 range) as (x, y).
         map_shape: Map image dimensions as (H, W, C) for Mercator calculation.
+
     Returns:
         Tuple of (predicted_lat, predicted_lon), or (None, None) on error.
     """
@@ -151,11 +158,13 @@ def _calculate_gps_mercator(
     normalized_center_xy: Tuple[float, float],
     map_shape: Tuple[int, ...],
 ) -> Tuple[float, float]:
-    """Calculates GPS using Mercator projection (Bing Maps TileSystem).
+    """Calculates geographic coordinates using Mercator projection (Bing Maps TileSystem).
+
     Args:
         map_metadata: Dictionary with 'Top_left_lat', 'Top_left_lon', 'Level'.
         normalized_center_xy: Normalized (x, y) in range [0, 1].
         map_shape: Map image dimensions as (H, W, C).
+
     Returns:
         Tuple of (latitude, longitude) in degrees.
     """

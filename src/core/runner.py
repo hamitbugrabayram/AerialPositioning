@@ -220,11 +220,13 @@ class LocalizationRunner:
     def _filter_relevant_maps(
         self, query_row: pd.Series, map_df: pd.DataFrame, radius_meters: float = 600.0
     ) -> pd.DataFrame:
-        """Filters satellite tiles based on initial GPS proximity.
+        """Filters satellite tiles based on initial coordinate proximity.
+
         Args:
             query_row: metadata for the query image.
             map_df: DataFrame containing all satellite tiles.
             radius_meters: Search radius for filtering.
+
         Returns:
             A filtered DataFrame of relevant satellite tiles.
         """

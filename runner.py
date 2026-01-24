@@ -20,16 +20,15 @@ import numpy as np
 import pandas as pd
 import yaml
 
+import time
 from src.utils.satellite_retrieval import retrieve_map_tiles
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DATASET_ROOT = PROJECT_ROOT / "_VisLoc_dataset"
 EXPERIMENTS_ROOT = PROJECT_ROOT / "experiments"
+CONSECUTIVE_ROOT = EXPERIMENTS_ROOT / "consecutive"
 BASE_CONFIG_PATH = PROJECT_ROOT / "config.yaml"
 SUMMARY_CSV = PROJECT_ROOT / "experiments_summary.csv"
-
-MAX_QUERIES = 20
-ZOOM_LEVELS = [15, 16, 17, 18]
 
 
 def load_base_config() -> Optional[Dict[str, Any]]:
@@ -151,11 +150,13 @@ def _get_telemetry_value(row: pd.Series, key: str, default: float = 0.0) -> floa
     return float(val)
 
 
-def prepare_region_data(index: int) -> None:
+def prepare_region_data(index: int, max_queries: int, zoom_levels: List[int]) -> None:
     """Prepares data for a specific region by sampling queries and fetching tiles.
 
     Args:
         index: Numeric ID of the region (1 to 11).
+        max_queries: Maximum number of query images to sample.
+        zoom_levels: List of zoom levels to prepare.
     """
     region_id = f"{index:02d}"
     raw_name = get_region_name(region_id)
@@ -169,10 +170,10 @@ def prepare_region_data(index: int) -> None:
         return
 
     df = pd.read_csv(csv_path)
-    num_samples = min(len(df), MAX_QUERIES)
+    num_samples = min(len(df), max_queries)
     subset = df.sample(n=num_samples, random_state=42).copy()
 
-    for zoom in ZOOM_LEVELS:
+    for zoom in zoom_levels:
         exp_name = f"{region_name}_{region_id}_zoom_{zoom}"
         exp_path = EXPERIMENTS_ROOT / exp_name
         query_dir = exp_path / "data/query"
@@ -225,16 +226,17 @@ def prepare_region_data(index: int) -> None:
         generate_region_config(exp_path, query_dir, map_dir, output_dir, drone_img_dir)
 
 
-def run_localization(index: int) -> None:
+def run_localization(index: int, zoom_levels: List[int]) -> None:
     """Runs the localization pipeline for all zooms in a region.
 
     Args:
         index: Numeric ID of the region (1 to 11).
+        zoom_levels: List of zoom levels to run.
     """
     region_id = f"{index:02d}"
     region_name = get_region_name(region_id).replace(" ", "_").replace("-", "_")
 
-    for zoom in ZOOM_LEVELS:
+    for zoom in zoom_levels:
         exp_name = f"{region_name}_{region_id}_zoom_{zoom}"
         exp_path = EXPERIMENTS_ROOT / exp_name
         config_path = exp_path / "config.yaml"
@@ -247,6 +249,136 @@ def run_localization(index: int) -> None:
         localize_script = PROJECT_ROOT / "localize.py"
         cmd = f"{sys.executable} {localize_script} --config {config_path}"
         os.system(cmd)
+
+
+def prepare_consecutive_data(index: int, zoom: int) -> Optional[Path]:
+    """Prepares all images for a region for consecutive localization testing.
+
+    Args:
+        index: Numeric ID of the region (1 to 11).
+        zoom: Zoom level to prepare.
+
+    Returns:
+        Path to the generated experiment directory.
+    """
+    region_id = f"{index:02d}"
+    raw_name = get_region_name(region_id)
+    region_name = raw_name.replace(" ", "_").replace("-", "_")
+    region_dir = DATASET_ROOT / region_id
+    csv_path = region_dir / f"{region_id}.csv"
+    drone_img_dir = region_dir / "drone"
+
+    if not os.path.isfile(str(csv_path)):
+        print(f"CSV not found: {csv_path}")
+        return None
+
+    df = pd.read_csv(csv_path)
+    df = df.sort_values(by="filename")
+
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    exp_name = f"{region_name}_{region_id}_zoom_{zoom}_{timestamp}"
+    exp_path = CONSECUTIVE_ROOT / exp_name
+    query_dir = exp_path / "data/query"
+    map_dir = exp_path / "data/map"
+    output_dir = exp_path / "data/output"
+
+    os.makedirs(str(query_dir), exist_ok=True)
+    os.makedirs(str(map_dir), exist_ok=True)
+    os.makedirs(str(output_dir), exist_ok=True)
+
+    map_source_found = False
+    
+    print(f"Searching for existing maps in experiments/ for Region {region_id} Zoom {zoom}...")
+    exp_matches = glob.glob(str(EXPERIMENTS_ROOT / f"*_{region_id}_zoom_{zoom}"))
+    if exp_matches:
+        source_map_dir = Path(exp_matches[0]) / "data/map"
+        if (source_map_dir / "map.csv").exists():
+            print(f"  Found maps in experiment: {exp_matches[0]}. Copying...")
+            for item in source_map_dir.iterdir():
+                if item.is_file(): shutil.copy2(item, map_dir / item.name)
+            map_source_found = True
+
+    if not map_source_found:
+        cache_dir = DATASET_ROOT / "consecutive_maps" / f"region_{region_id}_zoom_{zoom}"
+        if cache_dir.exists() and (cache_dir / "map.csv").exists():
+            print(f"  Found maps in cache. Copying...")
+            for item in cache_dir.iterdir():
+                if item.is_file(): shutil.copy2(item, map_dir / item.name)
+            map_source_found = True
+
+    if not map_source_found:
+        lats = df["lat"].tolist()
+        lons = df["lon"].tolist()
+        margin = 0.01
+        lat_max, lon_min = max(lats) + margin, min(lons) - margin
+        lat_min, lon_max = min(lats) - margin, max(lons) + margin
+
+        print(f"  No existing maps found. Fetching from satellite source...")
+        tiles = retrieve_map_tiles(lat_max, lon_min, lat_min, lon_max, zoom, str(map_dir))
+        if isinstance(tiles, list) and len(tiles) > 0:
+            pd.DataFrame(tiles).to_csv(str(map_dir / "map.csv"), index=False)
+
+            cache_dir = DATASET_ROOT / "consecutive_maps" / f"region_{region_id}_zoom_{zoom}"
+            os.makedirs(str(cache_dir), exist_ok=True)
+            for item in map_dir.iterdir():
+                if item.is_file(): shutil.copy2(item, cache_dir / item.name)
+            print(f"  Map data downloaded and cached.")
+
+    query_metadata = []
+
+    for _, row in df.iterrows():
+        filename = str(row["filename"])
+        src_img = drone_img_dir / filename
+        dst_img = query_dir / filename
+
+        if src_img.exists() and not dst_img.exists():
+            shutil.copy2(src_img, dst_img)
+
+        query_metadata.append(
+            {
+                "Filename": filename,
+                "Latitude": _get_telemetry_value(row, "lat"),
+                "Longitude": _get_telemetry_value(row, "lon"),
+                "Altitude": _get_telemetry_value(row, "height"),
+                "Gimball_Roll": _get_telemetry_value(row, "Kappa"),
+                "Gimball_Pitch": -90.0 + _get_telemetry_value(row, "Omega"),
+                "Gimball_Yaw": 0.0,
+                "Flight_Roll": 0.0,
+                "Flight_Pitch": 0.0,
+                "Flight_Yaw": _get_telemetry_value(row, "Phi1"),
+            }
+        )
+
+    pd.DataFrame(query_metadata).to_csv(str(query_dir / "photo_metadata.csv"), index=False)
+    generate_region_config(exp_path, query_dir, map_dir, output_dir, drone_img_dir)
+    return exp_path
+
+
+def run_consecutive_test(index: int) -> None:
+    """Executes the consecutive localization test for a region.
+
+    Args:
+        index: Numeric ID of the region (1 to 11).
+    """
+    exp_dirs = glob.glob(str(CONSECUTIVE_ROOT / "*"))
+    if not exp_dirs:
+        print("No prepared localization experiments found.")
+        return
+
+    region_id = f"{index:02d}"
+    relevant_dirs = [d for d in exp_dirs if f"_{region_id}_zoom_" in d]
+    if not relevant_dirs:
+        print(f"No prepared localization data for region {region_id}")
+        return
+
+    latest_exp = max(relevant_dirs, key=os.path.getmtime)
+    config_path = Path(latest_exp) / "config.yaml"
+
+    print(f"Running consecutive localization test: {latest_exp}")
+    
+    localize_script = PROJECT_ROOT / "localize.py"
+    cmd = f"{sys.executable} {localize_script} --config {config_path} --consecutive"
+    os.system(cmd)
 
 
 def get_experiment_metrics(output_dir: str) -> Optional[Dict[str, Any]]:
@@ -348,23 +480,40 @@ def main() -> None:
     )
     parser.add_argument("--run", action="store_true", help="Step 2: Run localization")
     parser.add_argument("--eval", action="store_true", help="Step 3: Evaluate results")
+    parser.add_argument(
+        "--consecutive-test",
+        type=int,
+        metavar="REGION_ID",
+        help="Run consecutive localization test for a region (1-11)",
+    )
+    
+    parser.add_argument("--max-queries", type=int, default=20, help="Max images to sample per region (Scenario 1)")
+    parser.add_argument("--zoom-levels", type=int, nargs="+", default=[15, 16, 17, 18], help="Zoom levels to test (Scenario 1)")
+    parser.add_argument("--consecutive-zoom", type=int, default=17, help="Zoom level for consecutive test (Scenario 2)")
+    
     args = parser.parse_args()
 
-    if not any([args.dataset_prepare, args.run, args.eval]):
+    if not any([args.dataset_prepare, args.run, args.eval, args.consecutive_test]):
         parser.print_help()
         sys.exit(0)
 
     for i in range(1, 12):
         if args.dataset_prepare:
             print(f"\n{'='*20} Preparing Dataset: Region {i} {'='*20}")
-            prepare_region_data(i)
+            prepare_region_data(i, args.max_queries, args.zoom_levels)
         if args.run:
             print(f"\n{'='*20} Running Localization: Region {i} {'='*20}")
-            run_localization(i)
+            run_localization(i, args.zoom_levels)
 
     if args.eval:
         print(f"\n{'='*20} Evaluating All Results {'='*20}")
         evaluate_all_results()
+
+    if args.consecutive_test:
+        region_id = args.consecutive_test
+        print(f"\n{'='*20} Consecutive Localization Test: Region {region_id} {'='*20}")
+        prepare_consecutive_data(region_id, args.consecutive_zoom)
+        run_consecutive_test(region_id)
 
 
 if __name__ == "__main__":

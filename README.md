@@ -1,29 +1,32 @@
 # Satellite Localization: Visual Localization Using Pre-existing Satellite Images 
 *Capstone Project | B.Sc. in Astronautical Engineering*
 
-A robust visual localization pipeline for estimating Aerial Vehicle coordinates by matching onboard imagery against satellite map tiles. The system utilizes Aerial Vehicle attitude angles to transform oblique footage into a precise nadir (top-down) view, enabling accurate cross-view matching. 
+A robust visual localization pipeline designed as a complementary aiding source for inertial navigation systems in GNSS-denied environments. The system estimates aerial vehicle coordinates by matching onboard imagery against satellite map tiles, providing periodic absolute position fixes to correct INS drift. It utilizes aerial vehicle attitude angles to transform oblique footage into a precise nadir (top-down) view, enabling accurate cross-view matching.
+
 
 <p align="center">
-  <img src="localization_showcase.gif" width="800" alt="Localization Showcase">
+  <img src="trajectory_showcase.gif" width="850" alt="Consecutive Localization Showcase">
+  <br>
+  <i>GNSS-Free Coordinate Estimation: Ground Truth (Orange) vs. Estimated Position (Blue)</i>
 </p>
 
 ## Table of Contents
 - [Features](#features)
 - [Installation](#installation)
 - [Dataset Setup](#dataset-setup)
-- [Usage (3-Step Pipeline)](#usage-3-step-pipeline)
-  - [Step 1: Dataset Preparation](#step-1-dataset-preparation)
-  - [Step 2: Execution](#step-2-execution)
-  - [Step 3: Result Evaluation](#step-3-result-evaluation)
+- [Usage (End-to-End Pipeline)](#usage-end-to-end-pipeline)
 - [Methodology](#methodology)
-- [Evaluation Results](#evaluation-results)
+- [Evaluation Scenarios](#evaluation-scenarios)
+- [Future Enhancements](#future-enhancements)
 - [References & Acknowledgments](#references--acknowledgments)
 
 ## Features
 
 *   **Perspective Warping:** Automatically corrects aerial vehicle tilt (Pitch/Roll) and heading (Yaw) to align aerial vehicle imagery with satellite imagery.
-*   **Different Matchers:** Supports **GIM**, **LightGlue**, **LoFTR**, and **MINIMA**.
-*   **Multi-Zoom Support:** Evaluate performance across different satellite resolutions by fetching from Bing. (You can use multiple zoom levels (0-23) for testing)
+*   **Deep Matchers:** Supports **GIM**, **LightGlue**, **LoFTR**, and **MINIMA**.
+*   **Multi-Zoom Analysis:** Evaluate performance across different satellite resolutions (Zoom levels 15-18).
+*   **Consecutive Localization:** Processes consecutive frames using **Displacement Prediction** (simulating INS/Odometry) to constrain the search window for real-time coordinate estimation.
+
 
 ## Installation
 
@@ -36,78 +39,66 @@ cd SatelliteLocalization
 conda create -n satloc python=3.9 -y && conda activate satloc
 pip install -r requirements.txt
 
-# Download Matcher Weights (Example for GIM)
-cd matchers/gim && bash download_weights.sh && cd ../..
+# Download Matcher Weights (Example for MINIMA)
+cd matchers/MINIMA/weights && bash download.sh && cd ../../..
 ```
 
 ## Dataset Setup
 
-The pipeline is optimized for the **UAV_VisLoc** dataset. 
+The pipeline is tested with the **VisLoc** dataset. 
 
-1.  **Extract Data**: Unzip the provided `UAV_VisLoc_dataset.zip` into the root directory.
-    ```bash
-    unzip UAV_VisLoc_dataset.zip -d _VisLoc_dataset/
-    ```
+1.  **Extract Data**: Download and unzip `UAV_VisLoc_dataset.zip` into the root directory.
 2.  **Structure**:
     ```
     _VisLoc_dataset/
     ├── 01/
-    │   ├── 01.csv            # Contains lat, lon, height, Omega, Phi1, Kappa
-    │   └── drone/            # Oblique aerial vehicle images (.jpg)
-    ├── 02/ ...
-    └── satellite_coordinates_range.csv  # Mapping of IDs to Region Names
+    │   ├── 01.csv            # Lat, Lon, Alt, Omega, Phi1, Kappa
+    │   └── drone/            # Oblique images (.JPG)
+    └── satellite_coordinates_range.csv  # Region mappings
     ```
 
-## Usage (3-Step Pipeline)
+## Usage
 
-The system uses `runner.py` to automate the entire workflow.
+The system uses `runner.py` to automate both benchmark scenarios and specialized localization tests.
 
-### Step 1: Dataset Preparation
-This step samples **20 random query images (configurable in runner.py)** from each region to ensure a representative but efficient evaluation. It then downloads corresponding satellite tiles from Bing Maps using `src/utils/satellite_retrieval.py` and generates configuration files.
+### Scenario 1: Global Benchmark (Random Sampling)
+Prepares and runs experiments on 20 random images per region across multiple zoom levels.
 ```bash
-python runner.py --dataset-prepare
-```
-*   **Satellite Retrieval:** The system uses a modified version of [Aerial-Satellite-Imagery-Retrieval](https://github.com/Aerial-Satellite-Imagery-Retrieval) to fetch high-resolution tiles based on the sampled query GNSS bounds.
+# Step 1: Prepare data and tiles
+python runner.py --dataset-prepare --max-queries 20 --zoom-levels 16 17
 
-### Step 2: Execution
-Runs the localization engine for all prepared regions and zoom levels. For each query image, the system automatically identifies all satellite tiles within a **600-meter radius** to perform the matching process.
-```bash
-python runner.py --run
-```
+# Step 2: Run localization
+python runner.py --run --zoom-levels 16 17
 
-### Step 3: Result Evaluation
-Compiles all results into a single summary report (`experiments_summary.csv`).
-```bash
+# Step 3: Evaluate results
 python runner.py --eval
 ```
+
+### Scenario 2: Consecutive Localization Test
+Processes a full flight path using displacement prediction and a tight local search radius.
+```bash
+python runner.py --consecutive-test [REGION_ID] --consecutive-zoom 16
+```
+*   **--consecutive-test**: Region ID (1-11).
+*   **--consecutive-zoom**: Zoom level to use (Default: 17).
+*   **--sample-interval**: Process every Nth frame (Default: 30).
 
 ## Methodology
 
 ### 1. Perspective Warping (Nadir Transformation)
-Oblique aerial vehicle images are transformed into a nadir view using Aerial Vehicle attitude angles (Yaw, Pitch, Roll) to eliminate perspective distortion:
+Oblique aerial vehicle images are transformed into a top-down view using:
 $$H_{warp} = K \cdot R_{AV}^T \cdot R_{nadir} \cdot K^{-1}$$
 
-### 2. Spatial Filtering (Relevant Maps)
-To optimize matching speed, the system filters the satellite database using a GNSS proximity search. Instead of matching against the entire map collection, it only selects "Relevant Maps":
-*   **Haversine Distance:** Calculates the distance between the query's initial GNSS and the center of each satellite tile.
-*   **Search Radius:** Only tiles within **600 meters** are passed to the deep-learning matcher.
-*   **Optimization:** This reduces the search space from hundreds of tiles to just the immediate neighborhood, significantly speeding up the pipeline.
+### 2. Displacement Prediction (Dead Reckoning)
+In consecutive localization mode, the system predicts the next search center by adding the vehicle's displacement vector (calculated from consecutive GT/Sensor data) to the last successful match position. This significantly reduces the search space to a **1000m radius**.
 
-### 3. Feature Matching
-We employ deep-learning matchers (GIM, LightGlue, etc.) to establish dense correspondences between the warped aerial vehicle image and potential satellite tiles. This stage is robust to seasonal changes and scale variations.
+### 3. Feature Matching & Geometric Verification
+Dense correspondences are established using deep matchers. A Homography matrix is estimated via RANSAC with strict stability checks (Determinant, Area Purity, and Boundary Constraints).
 
-### 4. Geometric Verification & Stability
-We estimate a Homography matrix $H$ using RANSAC and apply stability filters:
-*   **Determinant Check:** $|det(H)| > 10^{-9}$ to avoid singular transformations.
-*   **Area Purity:** Ensures the projected footprint area is physically plausible (not extremely skewed or collapsed).
-*   **Boundary Constraint:** Predicted center must be within 20% margin of the map tile (`[-0.2, 1.2]` normalized range).
+## Evaluation Scenarios
 
-### 5. Precision Geolocation
-The pixel-wise center of the aerial vehicle's footprint is projected onto the map tile. We then interpolate this pixel coordinate into GNSS (Lat/Lon) using the **Bing Maps TileSystem (Web Mercator)** projection, which accounts for the Earth's curvature more accurately than linear interpolation.
-
-## Evaluation Results
-
-The following table summarizes the performance of the **GIM** matcher across different regions and zoom levels. In these experiments, **20 random images** were sampled per region. Regions are listed with their average flight altitude to highlight the impact of Ground Sampling Distance (GSD).
+### Scenario 1: Global Stability & Multi-Zoom Analysis
+Testing global robustness by matching random samples against the entire map database.
 
 | Region (ID) | Altitude | Zoom | Success Rate | Avg Inliers | Min Error | Max Error | Avg Error |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -156,26 +147,36 @@ The following table summarizes the performance of the **GIM** matcher across dif
 | | | 17 | 65.0% | 242.5 | 10.66m | 51.30m | 27.26m |
 | | | 18 | 0.0% | 0.0 | N/A | N/A | N/A |
 
-### Key Observations
-*   **Optimal Zoom Window:** Most regions show peak performance at **Zoom 17**, where the success rate is significantly higher than at lower (Zoom 15) or higher (Zoom 18) levels. This suggests that Zoom 17 provides the best balance of context and detail for mid-altitude (400m-800m) flights.
-*   **High Altitude Robustness:** High-altitude regions like **Shandan (2572m)** maintain high success rates (up to 85%) even at lower zoom levels (Zoom 15/16). This is because the wide FOV from high altitudes covers more ground area, matching the larger scale of low-zoom satellite tiles.
-*   **Precision Extremes:** In successful matches, we observe a wide error range. **Donghuayuan** achieved exceptional precision (1.75m avg error), while other regions stabilized around **20-30m**, which is still within a reliable range for GNSS-denied navigation.
-*   **Failure at Zoom 15:** For lower altitude flights, Zoom 15 often results in 0% success. The pixel resolution at this level is likely too coarse to capture the distinct features needed by deep-learning matchers for accurate alignment.
+### Scenario 2: Consecutive Localization (Local Search & INS Simulation)
+This scenario simulates a continuous flight path by processing the dataset consecutively at a **30-frame interval**. It demonstrates the system's ability to maintain a persistent state and leverage temporal consistency.
+
+#### Key Technical Approaches
+*   **Perspective Warping (Nadir Transformation):** Oblique aerial imagery is transformed into top-down view using gimbal angles (Pitch/Roll/Yaw) and camera intrinsics. The adaptive yaw feature automatically selects the nearest 90° multiple to minimize rotation distortion, preserving image quality for matching.
+*   **INS/Odometry Simulation:** The system predicts the next search window by calculating the vehicle's displacement vector from consecutive telemetry data. This "dead reckoning" mimics an integrated Navigation System.
+*   **Search Radius Optimization:** By predicting the search center, the search space is reduced from a global region to a tight **1000m local window**, dramatically improving matching speed and reducing false positives in repetitive terrains.
+*   **Progressive Map Generation:** The system dynamically stitches satellite tiles and draws the paths live, saving a snapshot at every checkpoint for thorough analysis.
+
+#### Visual Elements Legend
+*   **Thick Orange Line:** The continuous Ground Truth path of the Aerial Vehicle.
+*   **Mega Blue Dots:** Estimated positions successfully localized by the system.
+*   **Thick Red Lines:** Visual representation of the precision gap (offset) between Estimated and actual coordinates at each checkpoint.
+*   **Red 'X' Markers:** Localizations that failed geometric verification; the system uses displacement prediction to jump to the next window and re-acquire track.
 
 ### Future Enhancements
-The project can be further advanced by implementing the following improvements (I plan to implement these as time permits):
-*   **Adaptive Zoom Selection:** Automatically determining the optimal satellite zoom level based on the aircraft's real-time altitude and Ground Sampling Distance (GSD).
-*   **Map Database & Efficient Retrieval:** Developing a robust map database system to streamline searching and fetching appropriate satellite tiles.
-*   **Recursive Search Expansion:** Implementing a dynamic search strategy that expands the search radius incrementally if a match cannot be found in the initial area.
-*   **Dead Reckoning (Odometry/VIO):** Integrating Odometry or Visual-Inertial Odometry (VIO) to maintain pose estimation in intervals where visual matching with satellite imagery fails.
-*   **Sophisticated Filtering:** Implementing more advanced statistical or learning-based filtering methods (e.g., Kalman Filters, Particle Filters) to smooth the trajectory and eliminate localization outliers.
-
+*   **Adaptive Zoom Selection:** Automatic zoom level based on real-time GSD.
+*   **Map Database:** Efficient indexing for global retrieval.
+*   **Recursive Search:** Expanding radius only upon consecutive failures.
+*   **INS-Complementary Integration:** This visual localization system is not intended as a standalone navigation solution, but as a complementary aiding source for INS. By providing periodic absolute position fixes, it can correct INS drift during extended GNSS-denied operations, similar to how GNSS aids INS in traditional navigation systems.
 
 ## References & Acknowledgments
-
-1.  **Core Concept Inspiration:** [WildNav (TIERS)](https://github.com/TIERS/wildnav) - Conceptual idea of cross-view visual localization.
-2.  **Dataset:** [UAV-VisLoc Dataset](https://github.com/IntelliSensing/UAV-VisLoc) - Official repository for the UAV-VisLoc dataset.
-3.  **Tile Retrieval:** [Aerial-Satellite-Imagery-Retrieval](https://github.com/Aerial-Satellite-Imagery-Retrieval) - Used for fetching Bing Maps satellite tiles.
+1.  **[WildNav (TIERS)](https://github.com/TIERS/wildnav):** Core cross-view concept inspiration.
+2.  **[UAV-VisLoc Dataset](https://github.com/IntelliSensing/UAV-VisLoc):** Official benchmark data source.
+3.  **[Aerial-Satellite-Imagery-Retrieval](https://github.com/chiragkhandhar/Aerial-Satellite-Imagery-Retrieval):** Modified Bing Maps retrieval system.
+4.  **Deep Matchers:** 
+    *   [GIM](https://github.com/xuelunshen/gim)
+    *   [LightGlue](https://github.com/cvg/LightGlue)
+    *   [LoFTR](https://github.com/zju3dv/LoFTR)
+    *   [MINIMA](https://github.com/LSXI7/MINIMA)
 
 ---
-*Developed as a graduation project.*
+*Developed as a B.Sc. Graduation Project.*

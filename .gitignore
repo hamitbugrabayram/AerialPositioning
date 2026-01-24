@@ -67,13 +67,18 @@ matchers/gim/weights/*
 _VisLoc_dataset/
 experiments/
 experiments_summary.csv
-
+trajectory/
 UAV_VisLoc_dataset.zip
 visloc/
 matcher_benchmark/
+
+# Visualizations
 *.JPG
 *.png
 *.jpg
+# Allow specific showcase assets for documentation
+!trajectory_showcase.gif
+!localization_showcase.gif
 
 # IDE files
 .vscode/
@@ -99,5 +104,6 @@ Thumbs.db
 # Tools
 .opencode/
 pip-cache/
-
+run_trajectory.py
+create_trajectory_gif.py
 generate_gif.py

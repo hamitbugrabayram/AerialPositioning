@@ -1,7 +1,9 @@
 """Satellite Visual Localization System.
-This script provides an aerial localization system using satellite imagery.
-It estimates the GPS position of an aerial vehicle by matching onboard camera images
-against satellite map tiles using state-of-the-art feature matching algorithms.
+
+This script provides a GNSS-free aerial localization system using satellite imagery.
+It estimates the geographic coordinates of an aerial vehicle by matching onboard
+camera images against satellite map tiles using deep feature matching algorithms.
+
 Usage:
     python localize.py --config config.yaml
 """
@@ -11,6 +13,7 @@ import traceback
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 from src.core import LocalizationRunner
+from src.core.consecutive_runner import ConsecutiveRunner
 from src.models import LocalizationConfig
 
 def parse_arguments() -> argparse.Namespace:
@@ -37,6 +40,12 @@ Examples:
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Enable verbose output"
     )
+    parser.add_argument(
+        "--consecutive",
+        "-t",
+        action="store_true",
+        help="Run in consecutive localization mode for continuous coordinate estimation",
+    )
     return parser.parse_args()
 
 def main() -> int:
@@ -52,8 +61,12 @@ def main() -> int:
     print(f"Loading configuration from: {config_path}")
     try:
         config = LocalizationConfig.from_yaml(str(config_path))
-        runner = LocalizationRunner(config)
-        runner.run()
+        if args.consecutive:
+            runner = ConsecutiveRunner(config)
+            runner.run_trajectory()
+        else:
+            runner = LocalizationRunner(config)
+            runner.run()
         return 0
     except KeyboardInterrupt:
         print("\nOperation cancelled by user.")
