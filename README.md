@@ -107,51 +107,75 @@ The pixel-wise center of the aerial vehicle's footprint is projected onto the ma
 
 ## Evaluation Results
 
-The following table summarizes the performance of the **GIM** matcher across different regions and zoom levels from the **UAV_VisLoc** dataset. In these experiments, **20 random images** were sampled per region, and matching was restricted to satellite tiles within a **600-meter radius** of the ground truth location. Regions are listed with their average flight altitude to highlight the impact of Ground Sampling Distance (GSD).
+The following table summarizes the performance of the **GIM** matcher across different regions and zoom levels. In these experiments, **20 random images** were sampled per region. Regions are listed with their average flight altitude to highlight the impact of Ground Sampling Distance (GSD).
 
-| Experiment | Altitude | Zoom | Success Rate | Avg Error | Min Error | Max Error | Median Error | Avg Inliers |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Changjiang_20 (01)** | 406m | 16 | 5.0% | 13.67m | 13.67m | 13.67m | 13.67m | 118.0 |
-| | 406m | 17 | 10.0% | 34.52m | 15.40m | 53.64m | 34.52m | 177.0 |
-| **Changjiang_23 (02)** | 406m | 16 | 5.0% | 6.13m | 6.13m | 6.13m | 6.13m | 283.0 |
-| | 406m | 17 | 15.0% | 13.82m | 6.81m | 24.40m | 10.25m | 272.7 |
-| **Taizhou_1 (03)** | 466m | 16 | 20.0% | 15.76m | 3.44m | 27.22m | 16.18m | 193.0 |
-| | 466m | 17 | 50.0% | 21.13m | 3.29m | 32.59m | 22.99m | 280.6 |
-| **Taizhou_6 (04)** | 545m | 16 | 30.0% | 42.39m | 13.06m | 97.01m | 31.91m | 290.7 |
-| | 545m | 17 | 45.0% | 30.10m | 12.56m | 96.48m | 22.68m | 349.0 |
-| **Yunnan (05)** | 2315m | 16 | 5.0% | 46.50m | 46.50m | 46.50m | 46.50m | 130.0 |
-| | 2315m | 17 | 15.0% | 42.80m | 27.30m | 54.95m | 46.15m | 264.3 |
-| **Zhuxi (06)** | 838m | 16 | 0.0% | N/A | N/A | N/A | N/A | 0.0 |
-| | 838m | 17 | 0.0% | N/A | N/A | N/A | N/A | 0.0 |
-| **Donghuayuan (07)** | 690m | 16 | 0.0% | N/A | N/A | N/A | N/A | 0.0 |
-| | 690m | 17 | 5.0% | 2.78m | 2.78m | 2.78m | 2.78m | 123.0 |
-| **Huzhou_3_P1 (08)** | 552m | 16 | 35.0% | 27.00m | 13.04m | 39.99m | 23.18m | 311.6 |
-| | 552m | 17 | 50.0% | 27.62m | 13.69m | 55.60m | 24.28m | 370.8 |
-| **Huzhou_3_P2 (09)** | 547m | 16 | 25.0% | 20.64m | 4.10m | 30.91m | 26.26m | 490.4 |
-| | 547m | 17 | 50.0% | 23.81m | 4.49m | 40.27m | 24.53m | 290.0 |
-| **Huailai (10)** | 772m | 16 | 0.0% | N/A | N/A | N/A | N/A | 0.0 |
-| | 772m | 17 | 20.0% | 23.97m | 20.50m | 26.59m | 24.40m | 158.5 |
-| **Shandan (11)** | 2572m | 16 | 90.0% | 29.95m | 11.74m | 82.91m | 24.24m | 412.6 |
-| | 2572m | 17 | 65.0% | 27.61m | 11.38m | 52.17m | 26.76m | 247.3 |
+| Region (ID) | Altitude | Zoom | Success Rate | Avg Inliers | Min Error | Max Error | Avg Error |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Changjiang_20 (01)** | 406m | 15 | 0.0% | 0.0 | N/A | N/A | N/A |
+| | | 16 | 5.0% | 117.0 | 13.41m | 13.41m | 13.41m |
+| | | 17 | 10.0% | 168.0 | 15.68m | 57.37m | 36.53m |
+| | | 18 | 5.0% | 84.0 | 3.03m | 3.03m | 3.03m |
+| **Changjiang_23 (02)** | 406m | 15 | 0.0% | 0.0 | N/A | N/A | N/A |
+| | | 16 | 5.0% | 245.0 | 7.05m | 7.05m | 7.05m |
+| | | 17 | 15.0% | 269.7 | 7.02m | 21.98m | 13.48m |
+| | | 18 | 10.0% | 134.0 | 6.77m | 11.55m | 9.16m |
+| **Taizhou_1 (03)** | 466m | 15 | 0.0% | 0.0 | N/A | N/A | N/A |
+| | | 16 | 20.0% | 201.5 | 2.35m | 27.22m | 13.95m |
+| | | 17 | 45.0% | 300.9 | 1.86m | 31.93m | 20.15m |
+| | | 18 | 15.0% | 182.7 | 23.18m | 26.43m | 24.79m |
+| **Taizhou_6 (04)** | 545m | 15 | 0.0% | 0.0 | N/A | N/A | N/A |
+| | | 16 | 35.0% | 258.3 | 12.02m | 95.66m | 39.07m |
+| | | 17 | 50.0% | 310.4 | 12.91m | 96.63m | 29.65m |
+| | | 18 | 10.0% | 125.5 | 9.93m | 31.89m | 20.91m |
+| **Yunnan (05)** | 2315m | 15 | 0.0% | 0.0 | N/A | N/A | N/A |
+| | | 16 | 5.0% | 131.0 | 49.24m | 49.24m | 49.24m |
+| | | 17 | 15.0% | 305.3 | 26.97m | 54.25m | 42.58m |
+| | | 18 | 5.0% | 84.0 | 28.50m | 28.50m | 28.50m |
+| **Zhuxi (06)** | 838m | 15 | 0.0% | 0.0 | N/A | N/A | N/A |
+| | | 16 | 0.0% | 0.0 | N/A | N/A | N/A |
+| | | 17 | 5.0% | 78.0 | 46.78m | 46.78m | 46.78m |
+| | | 18 | 0.0% | 0.0 | N/A | N/A | N/A |
+| **Donghuayuan (07)** | 690m | 15 | 0.0% | 0.0 | N/A | N/A | N/A |
+| | | 16 | 0.0% | 0.0 | N/A | N/A | N/A |
+| | | 17 | 10.0% | 114.5 | 0.55m | 2.95m | 1.75m |
+| | | 18 | 15.0% | 231.0 | 2.02m | 3.29m | 2.66m |
+| **Huzhou_3_P1 (08)** | 552m | 15 | 0.0% | 0.0 | N/A | N/A | N/A |
+| | | 16 | 35.0% | 310.4 | 13.04m | 38.67m | 26.31m |
+| | | 17 | 55.0% | 348.4 | 13.14m | 55.17m | 26.91m |
+| | | 18 | 5.0% | 164.0 | 16.98m | 16.98m | 16.98m |
+| **Huzhou_3_P2 (09)** | 547m | 15 | 0.0% | 0.0 | N/A | N/A | N/A |
+| | | 16 | 25.0% | 494.6 | 3.16m | 32.77m | 19.20m |
+| | | 17 | 45.0% | 305.7 | 5.39m | 50.27m | 25.15m |
+| | | 18 | 5.0% | 125.0 | 3.72m | 3.72m | 3.72m |
+| **Huailai (10)** | 772m | 15 | 0.0% | 0.0 | N/A | N/A | N/A |
+| | | 16 | 0.0% | 0.0 | N/A | N/A | N/A |
+| | | 17 | 20.0% | 146.0 | 19.34m | 26.83m | 23.76m |
+| | | 18 | 5.0% | 196.0 | 26.50m | 26.50m | 26.50m |
+| **Shandan (11)** | 2572m | 15 | 25.0% | 369.0 | 14.06m | 49.44m | 26.25m |
+| | | 16 | 85.0% | 425.8 | 13.45m | 78.60m | 30.04m |
+| | | 17 | 65.0% | 242.5 | 10.66m | 51.30m | 27.26m |
+| | | 18 | 0.0% | 0.0 | N/A | N/A | N/A |
 
 ### Key Observations
-*   **Altitude vs. Zoom:** Higher altitude regions (e.g., Shandan @ 2572m) show very high success rates at Zoom 16 (90%), as the Ground Sampling Distance (GSD) of the aerial vehicle image aligns perfectly with lower satellite resolutions.
-*   **Precision:** Successful matches typically yield an average error between **5m and 30m**, demonstrating the effectiveness of the perspective warping and Mercator projection.
+*   **Optimal Zoom Window:** Most regions show peak performance at **Zoom 17**, where the success rate is significantly higher than at lower (Zoom 15) or higher (Zoom 18) levels. This suggests that Zoom 17 provides the best balance of context and detail for mid-altitude (400m-800m) flights.
+*   **High Altitude Robustness:** High-altitude regions like **Shandan (2572m)** maintain high success rates (up to 85%) even at lower zoom levels (Zoom 15/16). This is because the wide FOV from high altitudes covers more ground area, matching the larger scale of low-zoom satellite tiles.
+*   **Precision Extremes:** In successful matches, we observe a wide error range. **Donghuayuan** achieved exceptional precision (1.75m avg error), while other regions stabilized around **20-30m**, which is still within a reliable range for GNSS-denied navigation.
+*   **Failure at Zoom 15:** For lower altitude flights, Zoom 15 often results in 0% success. The pixel resolution at this level is likely too coarse to capture the distinct features needed by deep-learning matchers for accurate alignment.
 
 ### Future Enhancements
-The project can be further advanced by implementing the following improvements:
-*   **Advanced Map Search:** Implementing more efficient global or local map tile search algorithms to reduce the dependency on initial GNSS proximity.
-*   **Dead Reckoning with VIO:** Integrating Visual-Inertial Odometry (VIO) to maintain pose estimation in intervals where visual matching with satellite imagery fails.
-*   **Visual Place Recognition (VPR):** Supporting the system with VPR models to enhance robust global localization in feature-poor or repetitive environments.
+The project can be further advanced by implementing the following improvements (I plan to implement these as time permits):
+*   **Adaptive Zoom Selection:** Automatically determining the optimal satellite zoom level based on the aircraft's real-time altitude and Ground Sampling Distance (GSD).
+*   **Map Database & Efficient Retrieval:** Developing a robust map database system to streamline searching and fetching appropriate satellite tiles.
+*   **Recursive Search Expansion:** Implementing a dynamic search strategy that expands the search radius incrementally if a match cannot be found in the initial area.
+*   **Dead Reckoning (Odometry/VIO):** Integrating Odometry or Visual-Inertial Odometry (VIO) to maintain pose estimation in intervals where visual matching with satellite imagery fails.
 *   **Sophisticated Filtering:** Implementing more advanced statistical or learning-based filtering methods (e.g., Kalman Filters, Particle Filters) to smooth the trajectory and eliminate localization outliers.
 
 
 ## References & Acknowledgments
 
 1.  **Core Concept Inspiration:** [WildNav (TIERS)](https://github.com/TIERS/wildnav) - Conceptual idea of cross-view visual localization.
-2.  **Dataset:** [UAV-VisLoc Dataset](https://github.com/IntelliSensing/UAV-VisLoc) - Official repository for the UAV-VisLoc benchmark.
+2.  **Dataset:** [UAV-VisLoc Dataset](https://github.com/IntelliSensing/UAV-VisLoc) - Official repository for the UAV-VisLoc dataset.
 3.  **Tile Retrieval:** [Aerial-Satellite-Imagery-Retrieval](https://github.com/Aerial-Satellite-Imagery-Retrieval) - Used for fetching Bing Maps satellite tiles.
-4.  **Matchers:** GIM, LightGlue, LoFTR, SuperGlue.
 
 ---
 *Developed as a graduation project.*

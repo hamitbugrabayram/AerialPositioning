@@ -29,7 +29,7 @@ BASE_CONFIG_PATH = PROJECT_ROOT / "config.yaml"
 SUMMARY_CSV = PROJECT_ROOT / "experiments_summary.csv"
 
 MAX_QUERIES = 20
-ZOOM_LEVELS = [16, 17]
+ZOOM_LEVELS = [15, 16, 17, 18]
 
 
 def load_base_config() -> Optional[Dict[str, Any]]:
