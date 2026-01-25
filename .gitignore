@@ -1,12 +1,9 @@
-# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
 
-# C extensions
 *.so
 
-# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -25,17 +22,12 @@ wheels/
 *.egg
 MANIFEST
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so may as well ignore them.
 *.manifest
 *.spec
 
-# Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
 
-# Unit test / coverage reports
 htmlcov/
 .tox/
 .nox/
@@ -49,7 +41,6 @@ coverage.xml
 .pytest_cache/
 .mypy_cache/
 
-# Environments
 .env
 .venv
 venv/
@@ -57,36 +48,21 @@ ENV/
 env/
 venv_matchers/
 
-# Matchers specific
-matchers/MINIMA/weights/*
-matchers/gim/weights/*
-!matchers/MINIMA/weights/download.sh
-!matchers/gim/download_weights.sh
-
-# Project Specific
 _VisLoc_dataset/
-experiments/
+datasets/
+results/
+results_report.md
 experiments_summary.csv
-trajectory/
 UAV_VisLoc_dataset.zip
-visloc/
-matcher_benchmark/
 
-# Visualizations
-*.JPG
-*.png
-*.jpg
-# Allow specific showcase assets for documentation
-!trajectory_showcase.gif
-!localization_showcase.gif
+!assets/positioning_showcase.gif
+!assets/positioning_error_plot.png
 
-# IDE files
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
 
-# Large model files
 *.ckpt
 *.pth
 *.pt
@@ -94,16 +70,8 @@ Thumbs.db
 *.engine
 *.plan
 
-# Temp / logs
 *.tmp
 *.bak
 *.log
 *.swp
 *~
-
-# Tools
-.opencode/
-pip-cache/
-run_trajectory.py
-create_trajectory_gif.py
-generate_gif.py

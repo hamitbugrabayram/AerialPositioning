@@ -30,6 +30,7 @@ try:
 except ImportError as e:
     raise ImportError(f"Failed to import LoFTR components: {e}") from e
 
+
 class LoFTRPipeline(BaseMatcher):
     """Feature matching pipeline using the LoFTR algorithm.
 
@@ -66,13 +67,9 @@ class LoFTRPipeline(BaseMatcher):
         if "match_thr" in self.loftr_params:
             model_config["match_coarse"]["thr"] = self.loftr_params["match_thr"]
 
-        print(f"Initializing LoFTR with weights: {weights_path}")
-
         self.model = LoFTRModel(config=model_config)
         self._load_weights(weights_path)
         self.model = self.model.eval().to(self._device)
-
-        print("LoFTR model initialized successfully.")
 
     def _load_weights(self, weights_path: str) -> None:
         """Loads model weights from a checkpoint file."""
@@ -194,11 +191,7 @@ class LoFTRPipeline(BaseMatcher):
             results["mconf"] = mconf
 
             homography, inlier_mask = self.estimate_homography(mkpts0, mkpts1)
-
-            if homography is not None:
-                results["homography"] = homography
-                results["inliers"] = inlier_mask
-                results["success"] = True
+            self._update_result_with_homography(results, homography, inlier_mask)
 
         except Exception as e:
             print(f"ERROR during LoFTR matching: {e}")
@@ -207,47 +200,3 @@ class LoFTRPipeline(BaseMatcher):
             results["time"] = time.time() - start_time
 
         return results
-
-    def visualize_matches(
-        self,
-        image0_path: Union[str, Path],
-        image1_path: Union[str, Path],
-        mkpts0: np.ndarray,
-        mkpts1: np.ndarray,
-        inliers: np.ndarray,
-        output_path: Union[str, Path],
-        title: str = "Matches",
-        homography: Optional[np.ndarray] = None,
-    ) -> bool:
-        """Saves a visualization image of the dense match result."""
-        try:
-            from src.utils.visualization import create_match_visualization
-        except ImportError:
-            print("Visualization module unavailable.")
-            return False
-
-        num_inliers = np.sum(inliers) if len(inliers) > 0 else 0
-        num_total = len(mkpts0)
-
-        text_info = [
-            self.name,
-            f"Matches: {num_inliers} / {num_total}",
-        ]
-
-        try:
-            return create_match_visualization(
-                image0_path=image0_path,
-                image1_path=image1_path,
-                mkpts0=mkpts0,
-                mkpts1=mkpts1,
-                inliers_mask=inliers,
-                output_path=output_path,
-                title="LoFTR Matches",
-                text_info=text_info,
-                show_outliers=False,
-                target_height=600,
-                homography=homography,
-            )
-        except Exception as e:
-            print(f"ERROR during visualization: {e}")
-            return False

@@ -1,41 +1,55 @@
-# Base configuration with placeholders
+# Aerial Positioning via Satellite Imagery - Configuration
+
+matcher_type: gim
+device: cuda
+
 camera_model:
   focal_length: 4.5
   hfov_deg: 82.9
-  resolution_height: 2652
-  resolution_width: 3976
 
-data_paths:
-  map_dir: "PLACEHOLDER"
-  map_metadata: "PLACEHOLDER"
-  output_dir: "PLACEHOLDER"
-  query_dir: "PLACEHOLDER"
-  query_metadata: "PLACEHOLDER"
-
-device: cuda
-localization_params:
-  min_inliers_for_success: 75
-  save_visualization: true
-
-matcher_type: gim
 matcher_weights:
   gim_model_type: lightglue
   gim_weights_path: matchers/gim/weights/gim_lightglue_100h.ckpt
+
   lightglue_features: superpoint
+
   loftr_weights_path: matchers/LoFTR/weights/outdoor_ds.ckpt
 
-preprocessing:
-  adaptive_yaw: false
-  enabled: true
-  resize_target: [1024]
-  save_processed: true
-  steps: ["resize", "warp"]
-  target_gimbal_pitch: -90.0
-  target_gimbal_roll: 0.0
-  target_gimbal_yaw: 0.0
+  minima_method: xoftr
+  minima_weights_dir: matchers/MINIMA/weights
+  minima_xoftr_ckpt: minima_xoftr.ckpt
+  minima_loftr_ckpt: minima_loftr.ckpt
+  minima_sp_lg_ckpt: minima_lightglue.pth
+
+matcher_params:
+  gim:
+    dkm_h: 672
+    dkm_w: 896
+    gim_lightglue_max_keypoints: 2048
+    gim_lightglue_filter_threshold: 0.1
+    resize_max: 1024
+    dfactor: 8
+  lightglue:
+    extractor_max_keypoints: 2048
+  loftr:
+    match_thr: 0.2
+    temp_bug_fix: true
+    resize: [1024]
+  minima:
+    match_threshold: 0.3
+    fine_threshold: 0.1
+    loftr_threshold: 0.2
 
 ransac_params:
   confidence: 0.999
   max_iter: 10000
   method: RANSAC
   reproj_threshold: 5.0
+
+positioning_params:
+  min_inliers_for_success: 70
+  save_visualization: true
+
+tile_provider:
+  name: esri
+  cache_dir: satellite

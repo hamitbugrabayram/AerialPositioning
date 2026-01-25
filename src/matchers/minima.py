@@ -9,13 +9,14 @@ import sys
 import time
 from argparse import Namespace
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Union
 
 import numpy as np
 
 from .base import BaseMatcher
 
 _MINIMA_PATH = Path(__file__).resolve().parent.parent.parent / "matchers/MINIMA"
+
 
 class MinimaPipeline(BaseMatcher):
     """Feature matching pipeline using the MINIMA framework.
@@ -59,12 +60,8 @@ class MinimaPipeline(BaseMatcher):
 
         method_args = self._build_method_args(weights_config, weights_dir)
 
-        print(f"Initializing MINIMA with method: {self.method}")
-        print(f"  Weights directory: {weights_dir}")
-
         self.matcher = None
         self._load_matcher(method_args)
-        print(f"MINIMA ({self.method}) initialized successfully.")
 
     def _load_matcher(self, args: Namespace) -> None:
         """Loads the MINIMA matcher and handles internal path dependencies."""
@@ -77,7 +74,7 @@ class MinimaPipeline(BaseMatcher):
             if not hasattr(np, "float"):
                 np.float = np.float64
 
-            sys.path = [p for p in sys.path if "SatelliteLocalization/src" not in p]
+            sys.path = [p for p in sys.path if "AerialPositioning/src" not in p]
 
             saved_modules = {}
             for mod_name in list(sys.modules.keys()):
@@ -177,11 +174,7 @@ class MinimaPipeline(BaseMatcher):
             results["mconf"] = mconf
 
             homography, inlier_mask = self.estimate_homography(mkpts0, mkpts1)
-
-            if homography is not None:
-                results["homography"] = homography
-                results["inliers"] = inlier_mask
-                results["success"] = True
+            self._update_result_with_homography(results, homography, inlier_mask)
 
         except Exception as e:
             print(f"ERROR during MINIMA matching: {e}")
@@ -190,41 +183,3 @@ class MinimaPipeline(BaseMatcher):
             results["time"] = time.time() - start_time
 
         return results
-
-    def visualize_matches(
-        self,
-        image0_path: Union[str, Path],
-        image1_path: Union[str, Path],
-        mkpts0: np.ndarray,
-        mkpts1: np.ndarray,
-        inliers: np.ndarray,
-        output_path: Union[str, Path],
-        title: str = "Matches",
-        homography: Optional[np.ndarray] = None,
-    ) -> bool:
-        """Saves a visualization image of the MINIMA match results."""
-        try:
-            from src.utils.visualization import create_match_visualization
-        except ImportError:
-            print("Visualization module unavailable.")
-            return False
-
-        num_inliers = np.sum(inliers) if len(inliers) > 0 else 0
-
-        try:
-            return create_match_visualization(
-                image0_path=image0_path,
-                image1_path=image1_path,
-                mkpts0=mkpts0,
-                mkpts1=mkpts1,
-                inliers_mask=inliers,
-                output_path=output_path,
-                title=f"MINIMA ({self.method}) Matches",
-                text_info=[self.name, f"Matches: {num_inliers} / {len(mkpts0)}"],
-                show_outliers=False,
-                target_height=600,
-                homography=homography,
-            )
-        except Exception as e:
-            print(f"ERROR during visualization: {e}")
-            return False

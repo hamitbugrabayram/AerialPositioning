@@ -6,11 +6,10 @@ postprocessing logic.
 """
 
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
-
-import numpy as np
+from typing import Any, Dict, Union
 
 from .lightglue import LightGluePipeline
+
 
 class SuperGluePipeline(LightGluePipeline):
     """Feature matching pipeline using the SuperGlue algorithm.
@@ -46,26 +45,3 @@ class SuperGluePipeline(LightGluePipeline):
             Dictionary containing match results.
         """
         return super().match(image0_path, image1_path)
-
-    def visualize_matches(
-        self,
-        image0_path: Union[str, Path],
-        image1_path: Union[str, Path],
-        mkpts0: np.ndarray,
-        mkpts1: np.ndarray,
-        inliers: np.ndarray,
-        output_path: Union[str, Path],
-        title: str = "Matches",
-        homography: Optional[np.ndarray] = None,
-    ) -> bool:
-        """Saves a visualization of the SuperGlue match results."""
-        return super().visualize_matches(
-            image0_path,
-            image1_path,
-            mkpts0,
-            mkpts1,
-            inliers,
-            output_path,
-            title=title,
-            homography=homography,
-        )
