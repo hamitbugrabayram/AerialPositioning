@@ -45,7 +45,7 @@ cd matchers/MINIMA/weights && bash download.sh && cd ../../..
 
 ## Dataset Setup
 
-The pipeline is tested with the **UAV-VisLoc** dataset but supports any georeferenced aerial imagery. For another data check the UAV-VisLoc dataset format!
+The pipeline is tested with the **UAV-VisLoc** dataset but supports any georeferenced aerial imagery. For another data check, the UAV-VisLoc dataset format!
 
 1.  **Extract Data**: Download UAV-VisLoc dataset.
     ```bash
@@ -60,10 +60,10 @@ The pipeline is tested with the **UAV-VisLoc** dataset but supports any georefer
     ```
     datasets/
     ├── 01_Changjiang_20/
-    │   ├── query/                # Global drone images and unified metadata
+    │   ├── query/                # Drone images and unified metadata
     │   └── map/
-    │       ├── esri/
-    │       │   └── 16/           # Cached satellite tiles
+    │       ├── esri/             # Satellite tiles
+    │       │   └── 16/           # Satellite tiles in specific zoom level
     │       └── google/
     ├── ...
     ```
@@ -102,7 +102,7 @@ All system parameters are centralized in `config.yaml`. You can configure the fo
 
 ## Results
 
-The following table summarizes the performance of the visual positioning system on Region 11 (Shandan) using the GIM (LightGlue) matcher. The system processes every frame with adaptive radius search.
+The following table summarizes the performance of the visual positioning system on Region 11 (Shandan) using the GIM (LightGlue) matcher. The system processes every frame with an adaptive radius search.
 
 | Region (ID) | Provider | Zoom | Success Rate | Avg Error | Avg Inliers |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -117,7 +117,7 @@ The following table summarizes the performance of the visual positioning system 
 *   **Frame-by-Frame Processing:** Every frame is processed with GT-Pred comparison for accurate trajectory visualization.
 *   **Adaptive Radius Search:** On matching failure, the system automatically increases search radius (1000m → 2000m → 3000m) before skipping a frame.
 *   **Search Window Efficiency:** By simulating an INS with Displacement Prediction, the search window is effectively constrained. Even if a frame fails to match, the system predicts the next window correctly.
-*   **Dual Path Visualization:** Output visualizations show both GT path (orange) and Predicted path (blue) with error lines connecting each pair.
+*   **Dual Path Visualization:** Output visualizations show both the GT path (orange) and the predicted path (blue) with error lines connecting each pair.
 
 ## Methodology
 
@@ -133,12 +133,12 @@ Adaptive yaw chooses the in-plane rotation that minimizes resampling artifacts a
 The next search window is predicted by propagating the last visual fix with the displacement vector (from consecutive pose/position estimates), simulating a simple INS/odometry dead-reckoning step. Visual fixes then act as periodic corrections that reset accumulated drift. If matching fails, adaptive radius search (1000 m → 2000 m → 3000 m) widens the search area before discarding the frame.
 
 ### 3. Dense Matching & RANSAC
-Dense or semi-dense correspondences are computed with deep transformer-based matchers (e.g. LoFTR, GIM). A planar homography $H$ between query and reference tile is estimated via RANSAC from these matches. Acceptance is gated by stability checks: determinant constraint ($|\det H| \approx 1$) for near-rigid motion and boundary constraints so projected corners remain within the image and the solution is non-degenerate.
+Dense or semi-dense correspondences are computed with deep transformer-based matchers (e.g., LoFTR, GIM). A planar homography $H$ between query and reference tile is estimated via RANSAC from these matches. Acceptance is gated by stability checks: determinant constraint ($|\det H| \approx 1$) for near-rigid motion and boundary constraints so projected corners remain within the image, and the solution is non-degenerate.
 
 ## Future Enhancements
 *   **Full EKF Integration:** Tightly/loosely coupled fusion of visual position fixes with IMU (gyro, accelerometer) and barometric altitude in a single state estimate; prediction from motion model, correction from vision and baro observations.
 *   **Adaptive Zoom Selection:** Automatic tile pyramid zoom-level selection from altitude and camera intrinsics to match Ground Sample Distance (GSD) and keep scale consistency for matching.
-*   **Model Optimization & Edge Deployment:** Quantization, pruning, and export to runtimes (e.g. ONNX, TensorRT) for low-latency inference on embedded/edge hardware (Jetson, Coral, etc.).
+*   **Model Optimization & Edge Deployment:** Quantization, pruning, and export to runtimes (e.g., ONNX, TensorRT) for low-latency inference on embedded/edge hardware (Jetson, Coral, etc.).
 
 
 ## References & Acknowledgments
