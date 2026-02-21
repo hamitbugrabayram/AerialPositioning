@@ -246,7 +246,8 @@ class TrajectoryVisualizer:
         for i in range(len(df)):
             pts.append(self._get_px(float(df.iloc[i]["Latitude"]), float(df.iloc[i]["Longitude"]), scale, origin, level))
         for i in range(len(pts) - 1):
-            cv2.line(canvas, pts[i], pts[i + 1], (0, 165, 255), 8)
+            cv2.line(canvas, pts[i], pts[i + 1], (0, 0, 0), 12)
+            cv2.line(canvas, pts[i], pts[i + 1], (0, 165, 255), 7)
 
     def _draw_pred_overlay(self, canvas, results, scale, origin, level):
         """Draws predicted path on the overlay."""
@@ -255,21 +256,26 @@ class TrajectoryVisualizer:
             if r.success and r.predicted_latitude is not None and r.predicted_longitude is not None:
                 pts.append(self._get_px(float(r.predicted_latitude), float(r.predicted_longitude), scale, origin, level))
         for i in range(len(pts) - 1):
-            cv2.line(canvas, pts[i], pts[i + 1], (255, 102, 0), 6)
+            cv2.line(canvas, pts[i], pts[i + 1], (0, 0, 0), 10)
+            cv2.line(canvas, pts[i], pts[i + 1], (255, 0, 0), 5)
 
     def _draw_markers_and_errors(self, canvas, results, scale, origin, level):
         """Draws markers and error lines on the overlay."""
+        error_color = (0, 0, 255)   # Red.
+        failed_color = (0, 0, 255)  # Red.
         for r in results:
             if r.gt_latitude is None or r.gt_longitude is None:
                 continue
             p_gt = self._get_px(float(r.gt_latitude), float(r.gt_longitude), scale, origin, level)
             if not r.success or r.predicted_latitude is None or r.predicted_longitude is None:
-                cv2.drawMarker(canvas, p_gt, (0, 0, 255), cv2.MARKER_TILTED_CROSS, 25, 4)
+                cv2.drawMarker(canvas, p_gt, (255, 255, 255), cv2.MARKER_TILTED_CROSS, 28, 7)
+                cv2.drawMarker(canvas, p_gt, failed_color, cv2.MARKER_TILTED_CROSS, 24, 5)
                 continue
             p_pred = self._get_px(float(r.predicted_latitude), float(r.predicted_longitude), scale, origin, level)
-            cv2.line(canvas, p_pred, p_gt, (0, 0, 255), 3)
+            cv2.line(canvas, p_pred, p_gt, (255, 255, 255), 7)
+            cv2.line(canvas, p_pred, p_gt, error_color, 4)
             cv2.circle(canvas, p_pred, 18, (255, 255, 255), -1)
-            cv2.circle(canvas, p_pred, 14, (255, 102, 0), -1)
+            cv2.circle(canvas, p_pred, 13, (255, 0, 0), -1)
 
     def _add_overlay_legend(self, canvas: np.ndarray, level: int) -> None:
         """Adds text legend to the map overlay."""
@@ -278,7 +284,7 @@ class TrajectoryVisualizer:
             (f"Map Provider: {provider}", (255, 255, 255)),
             (f"Zoom Level: {level}", (255, 255, 255)),
             ("Ground Truth Path", (0, 165, 255)),
-            ("Predicted Path", (255, 102, 0)),
+            ("Predicted Path", (255, 0, 0)),
             ("Error Line", (0, 0, 255)),
             ("Failed Match (X)", (0, 0, 255))
         ]

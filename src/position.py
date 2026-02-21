@@ -4,8 +4,8 @@ This script provides a GNSS-free aerial positioning system using satellite image
 It estimates the geographic coordinates of an aerial vehicle by matching onboard
 camera images against satellite map tiles using deep feature matching algorithms.
 
-The system supports multiple feature matching backends including LightGlue, LoFTR,
-SuperGlue, GIM, and MINIMA for robust cross-domain image matching.
+The system supports multiple feature matching backends including LightGlue,
+LoFTR, GIM, and MINIMA for robust cross-domain image matching.
 
 Example:
     Run the positioning system with a configuration file::

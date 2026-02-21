@@ -6,8 +6,8 @@ This package provides:
     - preprocessing: Image preprocessing and camera modeling (perspective warp,
       resize, camera intrinsics)
     - visualization: Match visualization utilities for debugging and analysis
-    - tile_system: Bing Maps TileSystem for coordinate projection and tile retrieval
-    - providers: Satellite imagery providers (ESRI, Google, Bing)
+    - tile_system: Web Mercator tile utilities for projection and retrieval
+    - providers: Satellite imagery providers (ESRI, Google)
 """
 
 from src.matchers.base import BaseMatcher, MatchResult

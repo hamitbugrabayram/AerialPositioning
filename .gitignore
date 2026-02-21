@@ -52,7 +52,6 @@ _VisLoc_dataset/
 datasets/
 results/
 results_report.md
-experiments_summary.csv
 UAV_VisLoc_dataset.zip
 
 !assets/positioning_showcase.gif

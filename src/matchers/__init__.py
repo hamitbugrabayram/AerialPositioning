@@ -6,7 +6,6 @@ Classes:
     BaseMatcher: Abstract base class defining the matcher interface.
     MatchResult: Standardized matching result structure.
     LightGluePipeline: LightGlue-based sparse feature matching.
-    SuperGluePipeline: SuperGlue-based sparse feature matching.
     LoFTRPipeline: LoFTR-based dense feature matching.
     GimPipeline: GIM (Generalized Image Matching) framework.
     MinimaPipeline: MINIMA cross-modal matching framework.
@@ -18,7 +17,6 @@ __all__ = [
     "BaseMatcher",
     "MatchResult",
     "LightGluePipeline",
-    "SuperGluePipeline",
     "LoFTRPipeline",
     "GimPipeline",
     "MinimaPipeline",
@@ -44,10 +42,6 @@ def __getattr__(name: str):
         from src.matchers.lightglue import LightGluePipeline
 
         return LightGluePipeline
-    elif name == "SuperGluePipeline":
-        from src.matchers.superglue import SuperGluePipeline
-
-        return SuperGluePipeline
     elif name == "LoFTRPipeline":
         from src.matchers.loftr import LoFTRPipeline
 

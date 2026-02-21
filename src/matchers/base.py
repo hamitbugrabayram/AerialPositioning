@@ -64,7 +64,12 @@ class BaseMatcher(ABC):
                 RANSAC parameters.
         """
         self.config = config
-        self.device = config.get("device", "cuda")
+        requested_device = str(config.get("device", "cuda")).lower()
+        if requested_device.startswith("cuda") and not torch.cuda.is_available():
+            print("WARNING: CUDA requested but not available. Falling back to CPU.")
+            self.device = "cpu"
+        else:
+            self.device = requested_device
 
         self.ransac_params = config.get("ransac_params", {})
         self.ransac_method = self.ransac_params.get("method", "RANSAC")

@@ -23,7 +23,6 @@ class PipelineFactory:
 
     PIPELINE_REGISTRY: Dict[str, Tuple[str, str]] = {
         "lightglue": ("src.matchers.lightglue", "LightGluePipeline"),
-        "superglue": ("src.matchers.superglue", "SuperGluePipeline"),
         "gim": ("src.matchers.gim", "GimPipeline"),
         "loftr": ("src.matchers.loftr", "LoFTRPipeline"),
         "minima": ("src.matchers.minima", "MinimaPipeline"),

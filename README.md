@@ -4,7 +4,7 @@
 A robust vision-based positioning pipeline designed as a complementary aiding source for inertial navigation systems (INS) in GNSS-denied environments. The system estimates the horizontal position (latitude and longitude) of an aerial vehicle by matching onboard camera imagery with publicly available satellite map tiles. The resulting position estimates are used to periodically correct INS drift, preventing the accumulation of long-term positioning errors. To enable reliable cross-view matching, the pipeline leverages vehicle attitude information to warp oblique camera views into a nadir (top-down) perspective aligned with satellite imagery.
 
 <p align="center">
-  <img src="assets/positioning_showcase.gif" width="850" alt="Visual Positioning Showcase">
+  <img src="assets/zoom16_esri_showcase.gif" width="850" alt="Visual Positioning Showcase">
   <br>
   <i>GNSS-Free Coordinate Estimation: Ground Truth (Orange) vs. Estimated Position (Blue)</i>
 </p>
@@ -25,8 +25,8 @@ A robust vision-based positioning pipeline designed as a complementary aiding so
 *   **Robust Geometric Validation:** Multi-stage filtering process using RANSAC and physical plausibility checks to ensure high-confidence positioning even in complex environments.
 *   **INS/Odometry Simulation:** Leverages displacement prediction to constrain the search space based on the vehicle's movement, dramatically increasing matching speed and robustness in GNSS-denied scenarios.
 *   **Adaptive Radius Search:** Automatically increases search radius (1000m → 2000m → 3000m) on matching failures to maximize success rate.
-*   **Deep Matching Suite:** Full integration of state-of-the-art matchers (LightGlue, LoFTR, SuperGlue, GIM, and MINIMA) for cross-domain robustness.
-*   **Multi-Provider Tile Engine:** Automated geodetic bounding box retrieval and tile stitching from ESRI, Google, and Bing Maps with accurate Mercator projection handling.
+*   **Deep Matching Suite:** Integration of LightGlue, LoFTR, GIM, and MINIMA backends for cross-domain robustness.
+*   **Multi-Provider Tile Engine:** Automated geodetic bounding box retrieval and tile stitching from ESRI and Google Maps with accurate Mercator projection handling.
 
 ## Installation
 
@@ -78,7 +78,7 @@ Fetches satellite tiles and organizes the central data storage.
 python runner.py --dataset-prepare all --zoom-levels 16 17 --tile-provider esri
 ```
 
-### 2. Visual Positioning13 B
+### 2. Visual Positioning
 
 Executes the main positioning pipeline using displacement vector prediction. Every frame is processed with adaptive radius search (1000m → 2000m → 3000m).
 ```bash
@@ -91,7 +91,7 @@ Generates a consolidated Markdown report from the `results/` folder.
 ```bash
 python runner.py --eval-summary all
 ```
-Open `results_report.md` to see the performance metrics and visual tracks.
+Open `results_report.md` for detailed experiment metrics.
 
 ## Configuration
 
@@ -102,27 +102,38 @@ All system parameters are centralized in `config.yaml`. You can configure the fo
 
 ## Results
 
-The following table summarizes the performance of the visual positioning system on Region 11 (Shandan) using the GIM (LightGlue) matcher. The system processes every frame with an adaptive radius search.
+The following benchmark summarizes Region 11 (Shandan) runs with GIM (LightGlue) for both ESRI and Google providers at zoom levels 15 and 16.  
+Evaluation settings: `sample_interval=1` (all frames), `radius_levels=[1000, 2000, 3000]`, `min_inliers_for_success=50`.
 
 | Region (ID) | Provider | Zoom | Success Rate | Avg Error | Avg Inliers |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Shandan (11)** | **ESRI** | **16** | **92.20%** | **29.87m** | **495.0** |
+| **Shandan (11)** | **ESRI** | **15** | **70.51%** | **29.84m** | **354.6** |
+| **Shandan (11)** | **Google** | **15** | **74.75%** | **30.96m** | **342.2** |
+| **Shandan (11)** | **ESRI** | **16** | **98.31%** | **29.89m** | **521.8** |
+| **Shandan (11)** | **Google** | **16** | **99.32%** | **30.08m** | **538.9** |
 
-### Positioning Error Evolution
+### Zoom 16 Trajectories
 <p align="center">
-  <img src="assets/positioning_error_plot.png" width="850" alt="Positioning Error over Time">
+  <img src="assets/zoom16_esri_showcase.gif" width="420" alt="Zoom 16 ESRI Trajectory GIF">
+  <img src="assets/zoom16_google_showcase.gif" width="420" alt="Zoom 16 Google Trajectory GIF">
+</p>
+
+### Zoom 16 Error Evolution
+<p align="center">
+  <img src="assets/zoom16_esri_error_plot.png" width="420" alt="Zoom 16 ESRI Error Evolution">
+  <img src="assets/zoom16_google_error_plot.png" width="420" alt="Zoom 16 Google Error Evolution">
 </p>
 
 ### Key Insights
-*   **Frame-by-Frame Processing:** Every frame is processed with GT-Pred comparison for accurate trajectory visualization.
-*   **Adaptive Radius Search:** On matching failure, the system automatically increases search radius (1000m → 2000m → 3000m) before skipping a frame.
-*   **Search Window Efficiency:** By simulating an INS with Displacement Prediction, the search window is effectively constrained. Even if a frame fails to match, the system predicts the next window correctly.
-*   **Dual Path Visualization:** Output visualizations show both the GT path (orange) and the predicted path (blue) with error lines connecting each pair.
+*   **Best Overall Result:** Zoom 16 with **Google** reached **99.32%** success over 590 frames.
+*   **Zoom Sensitivity:** Both providers improve sharply from zoom 15 to zoom 16.
+*   **Provider Comparison:** At zoom 16, Google is slightly better on success rate and average inliers.
+*   **Error Level:** Mean positioning error stays around **30m** across all runs.
 
 ## Methodology
 
 ### Offline: Modular Tile Retrieval Engine
-Maps are pre-downloaded offline before a run. A decoupled tile retrieval engine supports multiple providers (Bing Maps QuadKey, OpenStreetMap-compatible XYZ) so that high-resolution satellite tiles for the region of interest can be cached in advance and served without live network access during positioning.
+Maps are pre-downloaded offline before a run. A decoupled tile retrieval engine supports multiple providers (ESRI, Google) so that high-resolution satellite tiles for the region of interest can be cached in advance and served without live network access during positioning.
 
 ### 1. Perspective Warping (Nadir Transformation)
 Oblique UAV imagery is rectified to a nadir (top-down) view so that it is geometrically comparable to ortho-rectified satellite tiles. The warp homography is derived from camera intrinsics $K$ and vehicle attitude $R_{AV}$ (roll, pitch, yaw), with a target rotation $R_{nadir}$ aligning the view to the world vertical:
@@ -146,7 +157,7 @@ Dense or semi-dense correspondences are computed with deep transformer-based mat
 2.  **[WildNav](https://github.com/TIERS/wildnav):** Visual navigation concept.
 3.  **[Visual Localization](https://github.com/TerboucheHacene/visual_localization):** Vision-based GNSS-Free localization for UAVs in the wild concept.
 4.  **Deep Matchers:** [GIM](https://github.com/xuelunshen/gim), [LightGlue](https://github.com/cvg/LightGlue), [LoFTR](https://github.com/zju3dv/LoFTR), [MINIMA](https://github.com/LSXI7/MINIMA).
-5.  **Satellite Imagery Providers:** ESRI World Imagery, Google Maps, Bing Maps.
+5.  **Satellite Imagery Providers:** ESRI World Imagery, Google Maps.
 
 ---
 *Developed as a B.Sc. Graduation Project.*

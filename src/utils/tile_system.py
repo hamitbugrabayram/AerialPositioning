@@ -1,6 +1,6 @@
-"""Bing Maps TileSystem utilities for geographic projections and tile retrieval.
+"""TileSystem utilities for geographic projections and tile retrieval.
 
-This module implements methods used for Bing Maps tile system calculations
+This module implements methods used for Web Mercator tile system calculations
 and provides a unified interface for downloading satellite imagery.
 
 Reference:
@@ -20,7 +20,7 @@ from src.utils.providers import get_provider
 
 
 class TileSystem:
-    """Implements methods for the Bing Maps tile system and satellite retrieval.
+    """Implements methods for the tile system and satellite retrieval.
 
     This class provides static methods for coordinate conversions between
     geographic (lat/lon), pixel, tile, and quadkey representations.

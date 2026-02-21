@@ -4,7 +4,7 @@ This module provides essential functions for:
     - Coordinate system conversions (geographic to pixel)
     - Distance calculations (Haversine formula)
     - Positioning error computation
-    - Mercator projection for Bing Maps tile system
+    - Mercator projection for tile-based map systems
 """
 
 import math
@@ -151,7 +151,7 @@ def calculate_predicted_gps(
 ) -> Tuple[float, float]:
     """Converts normalized map coordinates to geographic coordinates.
 
-    Uses Bing Maps TileSystem for accurate Mercator projection when available.
+    Uses TileSystem for accurate Mercator projection when available.
 
     Args:
         map_metadata: Dictionary containing map corner coordinates and Level.
@@ -200,7 +200,7 @@ def _calculate_gps_mercator(
 ) -> Tuple[float, float]:
     """Calculates geographic coordinates using Mercator projection.
 
-    Uses the Bing Maps TileSystem for accurate coordinate conversion.
+    Uses TileSystem for accurate coordinate conversion.
 
     Args:
         map_metadata: Dictionary with 'Top_left_lat', 'Top_left_lon', 'Level'.

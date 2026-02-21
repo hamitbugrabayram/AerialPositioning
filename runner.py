@@ -71,6 +71,9 @@ class ExperimentRunner:
 
         Raises:
             RuntimeError: If the positioning process fails.
+
+        Returns:
+            None.
         """
         region_id = f"{index:02d}"
         region_name = self.dataset_manager.get_region_name(region_id)
@@ -116,7 +119,11 @@ class ExperimentRunner:
             sys.exit(1)
 
     def main(self) -> None:
-        """Main execution logic for the experiment runner."""
+        """Executes CLI flow for dataset preparation, evaluation, and reporting.
+
+        Returns:
+            None.
+        """
         parser = argparse.ArgumentParser(description="UAV-VisLoc Experiment Runner")
         parser.add_argument(
             "--dataset-prepare",
@@ -146,7 +153,7 @@ class ExperimentRunner:
             "--tile-provider",
             type=str,
             nargs="+",
-            choices=["esri", "google", "bing"],
+            choices=["esri", "google"],
             help="Map sources (Mandatory for eval/prepare)",
         )
 
