@@ -29,14 +29,22 @@ class PositioningEngine:
         self.config = config
         self.pipeline = pipeline
         self.preprocessor = preprocessor
-        self._processed_images: Dict[Path, np.ndarray] = {}
 
         self.haversine_distance = None
         self.calculate_predicted_gps = None
         self.calculate_location_and_error = None
 
     def inject_helpers(self, haversine, predicted_gps, location_and_error):
-        """Injects helper functions to avoid circular imports."""
+        """Injects helper functions to avoid circular imports.
+
+        Args:
+            haversine: Distance function implementation.
+            predicted_gps: Coordinate prediction function implementation.
+            location_and_error: Homography-to-location conversion function.
+
+        Returns:
+            None.
+        """
         self.haversine_distance = haversine
         self.calculate_predicted_gps = predicted_gps
         self.calculate_location_and_error = location_and_error
@@ -44,7 +52,16 @@ class PositioningEngine:
     def preprocess_query(
         self, query_path: Path, query_row: pd.Series, temp_dir: Optional[Path]
     ) -> Tuple[Path, Optional[Tuple[int, ...]]]:
-        """Applies configured preprocessing steps to a query image."""
+        """Applies configured preprocessing steps to a query image.
+
+        Args:
+            query_path: Query image file path.
+            query_row: Query metadata row.
+            temp_dir: Directory used for processed-image persistence.
+
+        Returns:
+            A tuple of `(path_for_matcher, query_shape)`.
+        """
         if self.preprocessor is None:
             img = cv2.imread(str(query_path))
             shape = img.shape if img is not None else None
@@ -60,18 +77,13 @@ class PositioningEngine:
         if processed.shape == img_original.shape and np.array_equal(processed, img_original):
             return query_path, shape
 
-        save_processed = bool(self.config.preprocessing.get("save_processed", False))
-        if not save_processed:
-            self._processed_images[query_path] = processed
-            return query_path, shape
-
         if temp_dir:
             name = f"{Path(query_path.name).stem}_processed{Path(query_path.name).suffix}"
             processed_path = temp_dir / name
             cv2.imwrite(str(processed_path), processed)
             return processed_path, shape
 
-        return query_path, img_original.shape
+        raise RuntimeError("Processed image cannot be matched without a temporary directory.")
 
     def match_query_to_map(
         self,
@@ -83,7 +95,20 @@ class PositioningEngine:
         min_inliers: int,
         save_viz: bool,
     ) -> Optional[Dict[str, Any]]:
-        """Matches a query image against a specific satellite tile."""
+        """Matches a query image against a specific satellite tile.
+
+        Args:
+            query_path: Query image path.
+            query_shape: Query image shape.
+            query_row: Query metadata row.
+            map_row: Candidate map tile metadata row.
+            results_dir: Per-query output directory.
+            min_inliers: Minimum inlier threshold for a valid match.
+            save_viz: Whether to save match visualizations.
+
+        Returns:
+            Match summary dictionary if successful, otherwise `None`.
+        """
         map_filename = str(map_row["Filename"])
         map_path = Path(self.config.data_paths["map_dir"]) / map_filename
         if not map_path.is_file() or self.pipeline is None:
@@ -111,10 +136,9 @@ class PositioningEngine:
                 print(f"    Tile positioning failed: {e}")
             return None
 
-        if pos_res["success"] or (save_viz and ransac_successful):
+        if save_viz and ransac_successful:
             results_dir.mkdir(exist_ok=True)
-            if save_viz and ransac_successful:
-                self._save_viz(results_dir, query_path, map_path, match_results)
+            self._save_viz(results_dir, query_path, map_path, match_results)
 
         if not pos_res["success"]:
             return None
@@ -138,7 +162,19 @@ class PositioningEngine:
         query_shape: Tuple[int, ...],
         map_shape: Tuple[int, ...],
     ) -> Dict[str, Any]:
-        """Calculates geographic position from the estimated homography."""
+        """Calculates geographic position from the estimated homography.
+
+        Args:
+            ransac_successful: Whether geometric estimation passed.
+            homography: Estimated homography matrix.
+            query_row: Query metadata row.
+            map_row: Map tile metadata row.
+            query_shape: Query image shape.
+            map_shape: Map image shape.
+
+        Returns:
+            Positioning result dictionary with success and error metadata.
+        """
         res = {"pred_lat": None, "pred_lon": None, "error_meters": float("inf"), "success": False}
         
         if not ransac_successful or homography is None:
@@ -167,7 +203,17 @@ class PositioningEngine:
         return res
 
     def _save_viz(self, results_dir, q_path, m_path, match_results):
-        """Saves match visualization."""
+        """Saves match visualization.
+
+        Args:
+            results_dir: Destination directory.
+            q_path: Query image path.
+            m_path: Map image path.
+            match_results: Matcher output dictionary.
+
+        Returns:
+            None.
+        """
         out_path = results_dir / f"{q_path.stem}_vs_{m_path.stem}_match.png"
         if hasattr(self.pipeline, "visualize_matches"):
             try:

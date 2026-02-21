@@ -22,6 +22,9 @@ class ResultManager:
         Args:
             output_dir: The root experiment directory.
             assets_dir: The directory for summary assets.
+
+        Returns:
+            None.
         """
         self.output_dir = output_dir
         self.assets_dir = assets_dir
@@ -32,6 +35,9 @@ class ResultManager:
         Args:
             results: List of results for each processed query.
             query_df_len: Original number of queries in the dataset.
+
+        Returns:
+            None.
         """
         if not results:
             print("No results to save.")
@@ -39,7 +45,7 @@ class ResultManager:
 
         df = self._create_summary_df(results)
         csv_path = self.assets_dir / "positioning_results.csv"
-        
+
         try:
             df.to_csv(csv_path, index=False, float_format="%.7f")
             print(f"\nSummary saved: {csv_path}")
@@ -49,31 +55,49 @@ class ResultManager:
         self.print_statistics(df, results, query_df_len)
 
     def _create_summary_df(self, results: List[QueryResult]) -> pd.DataFrame:
-        """Converts result objects into a pandas DataFrame."""
+        """Converts result objects into a pandas DataFrame.
+
+        Args:
+            results: List of query results.
+
+        Returns:
+            Tabular dataframe representation of query results.
+        """
         data = []
         for r in results:
-            data.append({
-                "Query Image": r.query_filename,
-                "Best Map Match": r.best_map_filename,
-                "Inliers": r.inliers,
-                "Outliers": r.outliers,
-                "Best Match Time (s)": r.time,
-                "GT Latitude": r.gt_latitude,
-                "GT Longitude": r.gt_longitude,
-                "Pred Latitude": r.predicted_latitude,
-                "Pred Longitude": r.predicted_longitude,
-                "Error (m)": r.error_meters,
-                "Positioning Success": r.success,
-            })
+            data.append(
+                {
+                    "Query Image": r.query_filename,
+                    "Best Map Match": r.best_map_filename,
+                    "Inliers": r.inliers,
+                    "Outliers": r.outliers,
+                    "Best Match Time (s)": r.time,
+                    "GT Latitude": r.gt_latitude,
+                    "GT Longitude": r.gt_longitude,
+                    "Pred Latitude": r.predicted_latitude,
+                    "Pred Longitude": r.predicted_longitude,
+                    "Error (m)": np.nan if not r.success else r.error_meters,
+                    "Positioning Success": r.success,
+                    "Search Radius (m)": r.search_radius_m,
+                    "Candidate Maps": r.candidate_maps,
+                    "Evaluated Maps": r.evaluated_maps,
+                    "Failure Reason": r.failure_reason,
+                }
+            )
         return pd.DataFrame(data)
 
-    def print_statistics(self, df: pd.DataFrame, results: List[QueryResult], total_queries: int) -> None:
+    def print_statistics(
+        self, df: pd.DataFrame, results: List[QueryResult], total_queries: int
+    ) -> None:
         """Computes and displays global performance statistics.
 
         Args:
             df: Summary DataFrame of results.
             results: List of result objects.
             total_queries: Total number of queries available.
+
+        Returns:
+            None.
         """
         successful = df[df["Positioning Success"]]
         num_processed = len(results)
@@ -90,5 +114,21 @@ class ResultManager:
             errs = successful["Error (m)"].astype(float)
             print(f"Avg Error: {errs.mean():.2f} m")
             print(f"Median Error: {np.median(errs.tolist()):.2f} m")
+            print(f"P90 Error: {np.percentile(errs, 90):.2f} m")
+            print(f"Max Error: {errs.max():.2f} m")
             print(f"Avg Inliers: {successful['Inliers'].mean():.1f}")
             print(f"Avg Time: {df['Best Match Time (s)'].mean():.3f} s")
+        if "Search Radius (m)" in df.columns:
+            radius_counts = (
+                df["Search Radius (m)"]
+                .dropna()
+                .astype(float)
+                .value_counts()
+                .sort_index()
+            )
+            if not radius_counts.empty:
+                radius_text = ", ".join(
+                    f"{int(radius)}m: {int(count)}"
+                    for radius, count in radius_counts.items()
+                )
+                print(f"Radius Usage: {radius_text}")

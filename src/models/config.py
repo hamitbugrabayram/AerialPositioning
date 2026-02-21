@@ -39,6 +39,10 @@ class QueryResult:
     predicted_longitude: Optional[float] = None
     error_meters: float = float("inf")
     success: bool = False
+    search_radius_m: Optional[float] = None
+    candidate_maps: int = 0
+    evaluated_maps: int = 0
+    failure_reason: Optional[str] = None
 
 
 @dataclass
@@ -46,7 +50,7 @@ class PositioningConfig:
     """Parsed positioning configuration.
 
     Attributes:
-        matcher_type: Type of matcher to use (lightglue, superglue, etc.).
+        matcher_type: Type of matcher to use (lightglue, gim, loftr, minima).
         device: Compute device (cuda, cpu).
         data_paths: Dictionary of data directory paths.
         preprocessing: Preprocessing configuration.
@@ -98,7 +102,7 @@ class PositioningConfig:
                     "enabled": True,
                     "steps": ["resize", "warp"],
                     "resize_target": [1024],
-                    "save_processed": True,
+                    "save_processed": False,
                     "target_gimbal_pitch": -90.0,
                     "target_gimbal_roll": 0.0,
                     "target_gimbal_yaw": 0.0,
@@ -128,7 +132,13 @@ class PositioningConfig:
                 },
             ),
             positioning_params=positioning_params
-            or {"min_inliers_for_success": 75, "save_visualization": True},
+            or {
+                "min_inliers_for_success": 75,
+                "save_visualization": True,
+                "sample_interval": 1,
+                "radius_levels": [1000.0, 2000.0, 3000.0],
+                "save_frame_sequence": False,
+            },
             tile_provider=config.get(
                 "tile_provider", {"name": "esri", "cache_dir": "satellite"}
             ),

@@ -7,6 +7,16 @@ camera_model:
   focal_length: 4.5
   hfov_deg: 82.9
 
+preprocessing:
+  enabled: true
+  steps: ["resize", "warp"]
+  resize_target: [1024]
+  save_processed: false
+  target_gimbal_pitch: -90.0
+  target_gimbal_roll: 0.0
+  target_gimbal_yaw: 0.0
+  adaptive_yaw: false
+
 matcher_weights:
   gim_model_type: lightglue
   gim_weights_path: matchers/gim/weights/gim_lightglue_100h.ckpt
@@ -27,7 +37,7 @@ matcher_params:
     dkm_w: 896
     gim_lightglue_max_keypoints: 2048
     gim_lightglue_filter_threshold: 0.1
-    resize_max: 1024
+    resize_max: 768
     dfactor: 8
   lightglue:
     extractor_max_keypoints: 2048
@@ -47,8 +57,11 @@ ransac_params:
   reproj_threshold: 5.0
 
 positioning_params:
-  min_inliers_for_success: 70
-  save_visualization: true
+  min_inliers_for_success: 50
+  save_visualization: false
+  save_frame_sequence: false
+  sample_interval: 1
+  radius_levels: [1000.0, 2000.0, 3000.0]
 
 tile_provider:
   name: esri

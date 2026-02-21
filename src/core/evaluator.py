@@ -9,12 +9,10 @@ import time
 from pathlib import Path
 from typing import Any, List, Optional, Tuple, cast
 
-import numpy as np
 import pandas as pd
 
 from src.core.runner import PositioningRunner
 from src.models.config import PositioningConfig, QueryResult
-from src.utils.helpers import PositioningError
 from src.utils.plotting import TrajectoryVisualizer
 
 
@@ -32,16 +30,37 @@ class Evaluator(PositioningRunner):
     """
 
     def __init__(self, config: PositioningConfig):
-        """Initializes the Evaluator with configuration."""
+        """Initializes the evaluator with configuration.
+
+        Args:
+            config: Global positioning configuration object.
+        """
         super().__init__(config)
         self.full_query_df: Optional[pd.DataFrame] = None
         self.sampled_query_df: Optional[pd.DataFrame] = None
         self.frames_dir: Optional[Path] = None
-        self.sample_interval: int = 1
+        self.save_frame_sequence = bool(
+            self.config.positioning_params.get("save_frame_sequence", False)
+        )
+        self.sample_interval: int = int(
+            self.config.positioning_params.get("sample_interval", 1)
+        )
+        if self.sample_interval <= 0:
+            self.sample_interval = 1
+        radius_levels = self.config.positioning_params.get(
+            "radius_levels", [1000.0, 2000.0, 3000.0]
+        )
+        self.radius_levels: List[float] = [float(x) for x in radius_levels]
+        if not self.radius_levels:
+            self.radius_levels = [1000.0, 2000.0, 3000.0]
         self.visualizer = TrajectoryVisualizer(config)
 
     def run_trajectory(self) -> None:
-        """Executes the visual positioning pipeline with sampling and prediction."""
+        """Executes the visual positioning pipeline with sampling and prediction.
+
+        Returns:
+            None.
+        """
         self._validate_paths()
         self._setup_output_directory()
         self._initialize_preprocessor()
@@ -54,7 +73,7 @@ class Evaluator(PositioningRunner):
             self.result_manager = ResultManager(self.output_dir, self.assets_dir)
         self._load_helpers()
 
-        if self.assets_dir is not None:
+        if self.assets_dir is not None and self.save_frame_sequence:
             self.frames_dir = self.assets_dir / "frames"
             self.frames_dir.mkdir(exist_ok=True)
 
@@ -85,21 +104,28 @@ class Evaluator(PositioningRunner):
 
         results = self._process_eval_queries()
         self._save_results(results)
+        self._cleanup_temp_processed_queries()
         self.visualizer.generate_trajectory_plot(results)
         print("\nPositioning Complete")
 
     def _process_eval_queries(self) -> List[QueryResult]:
-        """Processes images with GT-based displacement prediction."""
+        """Processes images with GT-based displacement prediction.
+
+        Returns:
+            List of sampled-frame query results.
+        """
         results: List[QueryResult] = []
         if self.sampled_query_df is None or self.full_query_df is None:
             return results
 
-        save_processed = bool(self.config.preprocessing.get("save_processed", False))
         temp_dir: Optional[Path] = None
-        if save_processed and self.assets_dir:
-            temp_dir = self.assets_dir / "processed_queries"
+        if self.assets_dir and self.config.preprocessing.get("enabled", False):
+            if self.config.preprocessing.get("save_processed", False):
+                temp_dir = self.assets_dir / "processed_queries"
+            else:
+                temp_dir = self.assets_dir / ".tmp_processed_queries"
         if temp_dir:
-            temp_dir.mkdir(exist_ok=True)
+            temp_dir.mkdir(parents=True, exist_ok=True)
 
         min_inliers = int(
             self.config.positioning_params.get("min_inliers_for_success", 10)
@@ -142,13 +168,20 @@ class Evaluator(PositioningRunner):
                     result.success = False
 
                 results.append(result)
-                self.visualizer.generate_trajectory_plot(results, frame_idx=idx_int)
+                if self.save_frame_sequence:
+                    self.visualizer.generate_trajectory_plot(results, frame_idx=idx_int)
 
                 success_count = sum(1 for r in results if r.success)
                 print(f"\rFrame: {idx_int+1}/{total_frames} | Radius: {radius}m | Success: {success_count}/{idx_int+1}", end="", flush=True)
 
-            except Exception:
-                results.append(QueryResult(query_filename=str(query_row.get("Filename")), success=False))
+            except Exception as e:
+                results.append(
+                    QueryResult(
+                        query_filename=str(query_row.get("Filename")),
+                        success=False,
+                        failure_reason=f"evaluator_exception: {e}",
+                    )
+                )
                 continue
 
         print()
@@ -183,17 +216,18 @@ class Evaluator(PositioningRunner):
         Returns:
             Tuple containing QueryResult and the radius used.
         """
-        radius_levels = [1000.0, 2000.0, 3000.0]
         final_result = QueryResult(query_filename=str(query_row.get("Filename")), success=False)
 
-        for radius in radius_levels:
+        for radius in self.radius_levels:
             final_result = self._process_single_query_with_custom_radius(
                 query_row, idx, temp_dir, min_inliers, save_viz, ref_lat, ref_lon, radius
             )
+            final_result.search_radius_m = radius
             if final_result.success:
                 return final_result, radius
 
-        return final_result, radius_levels[-1]
+        final_result.failure_reason = final_result.failure_reason or "all_radius_levels_failed"
+        return final_result, self.radius_levels[-1]
 
     def _process_single_query_with_custom_radius(
         self,
@@ -206,7 +240,21 @@ class Evaluator(PositioningRunner):
         ref_lon: float,
         radius: float,
     ) -> QueryResult:
-        """Processes a single query with custom search radius."""
+        """Processes a single query with custom search radius.
+
+        Args:
+            query_row: Query metadata row.
+            idx: Query index in sampled sequence.
+            temp_dir: Optional directory for processed query images.
+            min_inliers: Minimum inlier threshold.
+            save_viz: Whether to save match visualizations.
+            ref_lat: Reference latitude for candidate filtering.
+            ref_lon: Reference longitude for candidate filtering.
+            radius: Search radius in meters.
+
+        Returns:
+            Per-query best match result.
+        """
         query_filename = str(query_row["Filename"])
         gt_lat = float(cast(Any, query_row).get("Latitude", 0.0))
         gt_lon = float(cast(Any, query_row).get("Longitude", 0.0))
@@ -214,23 +262,29 @@ class Evaluator(PositioningRunner):
             query_filename=query_filename,
             gt_latitude=gt_lat,
             gt_longitude=gt_lon,
+            search_radius_m=radius,
         )
         q_path = Path(self.config.data_paths["query_dir"]) / query_filename
         if not q_path.is_file() or self.engine is None:
+            res.failure_reason = "query_file_missing_or_engine_unavailable"
             return res
 
         try:
             q_match, q_shape = self.engine.preprocess_query(q_path, query_row, temp_dir)
-        except Exception:
+        except Exception as e:
+            res.failure_reason = f"preprocess_failed: {e}"
             return res
 
         if q_shape is None or self.map_df is None or self.output_dir is None:
+            res.failure_reason = "query_shape_or_metadata_unavailable"
             return res
 
         rel_maps = self._filter_maps_by_custom_ref(ref_lat, ref_lon, self.map_df, radius)
+        res.candidate_maps = int(len(rel_maps))
         res_dir = self.output_dir / Path(query_filename).stem
 
         for _, m_row in rel_maps.iterrows():
+            res.evaluated_maps += 1
             try:
                 m_res = self.engine.match_query_to_map(
                     q_match, q_shape, query_row, m_row, res_dir, min_inliers, save_viz
@@ -241,6 +295,8 @@ class Evaluator(PositioningRunner):
                 if self.config.matcher_params.get("verbose"):
                     print(f"    Tile positioning failed: {e}")
                 continue
+        if not res.success and not res.failure_reason:
+            res.failure_reason = "no_valid_match_in_candidate_maps"
         return res
 
     def _filter_maps_by_custom_ref(
@@ -250,21 +306,17 @@ class Evaluator(PositioningRunner):
         map_df: pd.DataFrame,
         radius: float,
     ) -> pd.DataFrame:
-        """Filters map tiles by distance from a reference point."""
-        if self.engine is None or self.engine.haversine_distance is None:
+        """Filters map tiles by distance from a reference point.
+
+        Args:
+            lat: Reference latitude.
+            lon: Reference longitude.
+            map_df: Map metadata dataframe.
+            radius: Search radius in meters.
+
+        Returns:
+            Filtered map metadata dataframe.
+        """
+        if self.engine is None:
             return map_df
-
-        indices = []
-        for idx, m_row in map_df.iterrows():
-            try:
-                row_data = cast(Any, m_row)
-                m_lat = (float(row_data["Top_left_lat"]) + float(row_data["Bottom_right_lat"])) / 2
-                m_lon = (float(row_data["Top_left_lon"]) + float(row_data["Bottom_right_long"])) / 2
-                dist = self.engine.haversine_distance(float(lat), float(lon), m_lat, m_lon)
-                if dist <= radius:
-                    indices.append(idx)
-            except Exception:
-                continue
-        return map_df.loc[indices]
-
-
+        return self._filter_maps_by_reference(lat, lon, map_df, radius)
