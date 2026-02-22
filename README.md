@@ -4,7 +4,7 @@
 A robust vision-based positioning pipeline designed as a complementary aiding source for inertial navigation systems (INS) in GNSS-denied environments. The system estimates the horizontal position (latitude and longitude) of an aerial vehicle by matching onboard camera imagery with publicly available satellite map tiles. The resulting position estimates are used to periodically correct INS drift, preventing the accumulation of long-term positioning errors. To enable reliable cross-view matching, the pipeline leverages vehicle attitude information to warp oblique camera views into a nadir (top-down) perspective aligned with satellite imagery.
 
 <p align="center">
-  <img src="assets/zoom16_esri_showcase.gif" width="850" alt="Visual Positioning Showcase">
+  <img src="assets/zoom16_combined_showcase.gif" width="850">
   <br>
   <i>GNSS-Free Coordinate Estimation: Ground Truth (Orange) vs. Estimated Position (Blue)</i>
 </p>
@@ -112,16 +112,9 @@ Evaluation settings: `sample_interval=1` (all frames), `radius_levels=[1000, 200
 | **Shandan (11)** | **ESRI** | **16** | **98.31%** | **29.89m** | **521.8** |
 | **Shandan (11)** | **Google** | **16** | **99.32%** | **30.08m** | **538.9** |
 
-### Zoom 16 Trajectories
-<p align="center">
-  <img src="assets/zoom16_esri_showcase.gif" width="420" alt="Zoom 16 ESRI Trajectory GIF">
-  <img src="assets/zoom16_google_showcase.gif" width="420" alt="Zoom 16 Google Trajectory GIF">
-</p>
-
 ### Zoom 16 Error Evolution
 <p align="center">
-  <img src="assets/zoom16_esri_error_plot.png" width="420" alt="Zoom 16 ESRI Error Evolution">
-  <img src="assets/zoom16_google_error_plot.png" width="420" alt="Zoom 16 Google Error Evolution">
+  <img src="assets/zoom16_combined_error_plot.png" width="850" alt="Zoom 16 Error Evolution">
 </p>
 
 ### Key Insights
