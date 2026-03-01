@@ -1,5 +1,3 @@
-# Aerial Positioning via Satellite Imagery - Configuration
-
 matcher_type: gim
 device: cuda
 
@@ -8,14 +6,7 @@ camera_model:
   hfov_deg: 82.9
 
 preprocessing:
-  enabled: true
-  steps: ["resize", "warp"]
-  resize_target: [1024]
   save_processed: false
-  target_gimbal_pitch: -90.0
-  target_gimbal_roll: 0.0
-  target_gimbal_yaw: 0.0
-  adaptive_yaw: false
 
 matcher_weights:
   gim_model_type: lightglue

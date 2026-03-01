@@ -1,3 +1,4 @@
+
 """Visualization utilities for feature match display.
 
 This module provides functions for creating visual representations
@@ -9,6 +10,9 @@ from typing import List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
+
+from src.utils.logger import get_logger
+_logger = get_logger(__name__)
 
 
 def is_valid_homography(homography: Optional[np.ndarray]) -> bool:
@@ -79,14 +83,14 @@ def create_match_visualization(
         img1 = cv2.imread(str(image1_path), cv2.IMREAD_COLOR)
 
         if img0 is None or img1 is None:
-            print(f"Error: Could not read images: {image0_path}, {image1_path}")
+            _logger.info(f"Error: Could not read images: {image0_path}, {image1_path}")
             return False
 
         h0, w0 = img0.shape[:2]
         h1, w1 = img1.shape[:2]
 
         if h0 <= 0 or w0 <= 0 or h1 <= 0 or w1 <= 0:
-            print("Error: Invalid image dimensions for visualization.")
+            _logger.info("Error: Invalid image dimensions for visualization.")
             return False
 
         h_target = target_height if target_height and target_height > 0 else max(h0, h1)
@@ -220,11 +224,10 @@ def create_match_visualization(
         success = cv2.imwrite(str(output_path_obj), canvas)
 
         if not success:
-            print(f"Error: Failed to save visualization to {output_path_obj}")
+            _logger.info(f"Error: Failed to save visualization to {output_path_obj}")
             return False
 
         return True
     except Exception as e:
-        print(f"Error: Visualization creation failed - {e}")
+        _logger.info(f"Error: Visualization creation failed - {e}")
         return False
-

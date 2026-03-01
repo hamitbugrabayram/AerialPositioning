@@ -4,6 +4,7 @@ This module implements the LoFTR (Detector-Free Local Feature Matching)
 matcher for dense feature matching between image pairs.
 """
 
+
 import sys
 import time
 from copy import deepcopy
@@ -15,6 +16,9 @@ import numpy as np
 import torch
 
 from .base import BaseMatcher
+
+from src.utils.logger import get_logger
+_logger = get_logger(__name__)
 
 _LOFTR_PATH = Path(__file__).resolve().parent.parent.parent / "matchers/LoFTR"
 if str(_LOFTR_PATH) not in sys.path:
@@ -46,7 +50,7 @@ class LoFTRPipeline(BaseMatcher):
         """Initializes the LoFTR pipeline with configured weights.
 
         Args:
-            config: Configuration dictionary containing matcher parameters.
+            config (Dict[str, Any]): Configuration dictionary containing matcher parameters.
         """
         super().__init__(config)
         self._device = torch.device(self.device)
@@ -72,7 +76,14 @@ class LoFTRPipeline(BaseMatcher):
         self.model = self.model.eval().to(self._device)
 
     def _load_weights(self, weights_path: str) -> None:
-        """Loads model weights from a checkpoint file."""
+        """Loads model weights from a checkpoint file.
+
+        Args:
+            weights_path (str): Path to the model weights.
+
+        Raises:
+            RuntimeError: If loading the checkpoint fails.
+        """
         try:
             checkpoint = torch.load(weights_path, map_location="cpu")
             state_dict = checkpoint.get("state_dict", checkpoint)
@@ -88,7 +99,15 @@ class LoFTRPipeline(BaseMatcher):
     def _preprocess_image(
         self, image_path: Path
     ) -> Tuple[Optional[torch.Tensor], Optional[np.ndarray], Optional[Tuple[int, int]]]:
-        """Loads and prepares an image for LoFTR dense matching."""
+        """Loads and prepares an image for LoFTR dense matching.
+
+        Args:
+            image_path (Path): Path to the image file.
+
+        Returns:
+            Tuple[Optional[torch.Tensor], Optional[np.ndarray], Optional[Tuple[int, int]]]:
+                A tuple containing the image tensor, scale array, and original dimensions.
+        """
         try:
             image_bgr = cv2.imread(str(image_path))
             if image_bgr is None:
@@ -129,11 +148,19 @@ class LoFTRPipeline(BaseMatcher):
             )
 
         except Exception as e:
-            print(f"Error preprocessing image {image_path.name}: {e}")
+            _logger.info(f"Error preprocessing image {image_path.name}: {e}")
             return None, None, None
 
     def _calculate_target_size(self, w_orig: int, h_orig: int) -> Tuple[int, int]:
-        """Calculates target dimensions based on resize configurations."""
+        """Calculates target dimensions based on resize configurations.
+
+        Args:
+            w_orig (int): Original width.
+            h_orig (int): Original height.
+
+        Returns:
+            Tuple[int, int]: The target width and height for resizing.
+        """
         resize_opt = self.loftr_params.get("resize")
         target_w, target_h = w_orig, h_orig
 
@@ -157,11 +184,11 @@ class LoFTRPipeline(BaseMatcher):
         """Performs dense feature matching between two images.
 
         Args:
-            image0_path: Path to the query image.
-            image1_path: Path to the reference/map image.
+            image0_path (Union[str, Path]): Path to the query image.
+            image1_path (Union[str, Path]): Path to the reference/map image.
 
         Returns:
-            Dictionary containing match coordinates and success status.
+            Dict[str, Any]: Dictionary containing match coordinates and success status.
         """
         start_time = time.time()
         results = self._create_empty_result()
@@ -194,7 +221,7 @@ class LoFTRPipeline(BaseMatcher):
             self._update_result_with_homography(results, homography, inlier_mask)
 
         except Exception as e:
-            print(f"ERROR during LoFTR matching: {e}")
+            _logger.info(f"ERROR during LoFTR matching: {e}")
 
         finally:
             results["time"] = time.time() - start_time

@@ -1,3 +1,4 @@
+
 """Positioning orchestration logic for aerial position estimation.
 
 This module contains the PositioningRunner class which coordinates the
@@ -5,11 +6,11 @@ loading of metadata, preprocessing of images, execution of matching algorithms,
 and calculation of positioning accuracy.
 """
 
+import shutil
 from pathlib import Path
-from typing import Any, List, Optional, cast
+from typing import List, Optional
 
 import numpy as np
-import shutil
 import pandas as pd
 
 from src.core.engine import PositioningEngine
@@ -17,12 +18,26 @@ from src.core.factory import PipelineFactory
 from src.models.config import PositioningConfig, QueryResult
 from src.utils.statistics import ResultManager
 
+from src.utils.logger import get_logger
+_logger = get_logger(__name__)
+
 
 class PositioningRunner:
     """Orchestrates the visual positioning process.
 
     This class manages the lifecycle of a positioning run, including
     initialization of matchers, data loading, result computation, and reporting.
+
+    Attributes:
+        config (PositioningConfig): Global positioning configuration object.
+        pipeline (Any): The instantiated matching pipeline.
+        preprocessor (Any): The image preprocessing module.
+        engine (PositioningEngine): The core positioning engine.
+        result_manager (ResultManager): Handles result storage and statistics.
+        query_df (Optional[pd.DataFrame]): DataFrame containing query metadata.
+        map_df (Optional[pd.DataFrame]): DataFrame containing map tile metadata.
+        output_dir (Optional[Path]): Directory for saving results.
+        assets_dir (Optional[Path]): Directory for saving visual assets.
     """
 
     def __init__(self, config: PositioningConfig):
@@ -50,14 +65,15 @@ class PositioningRunner:
         """
         if self._helpers_loaded:
             return True
-        from src.utils.helpers import (
-            calculate_location_and_error,
-            calculate_predicted_gps,
-            haversine_distance,
-        )
+        from src.utils.helpers import (calculate_location_and_error,
+                                       calculate_predicted_gps,
+                                       haversine_distance)
+
         if self.engine:
             self.engine.inject_helpers(
-                haversine_distance, calculate_predicted_gps, calculate_location_and_error
+                haversine_distance,
+                calculate_predicted_gps,
+                calculate_location_and_error,
             )
         self._helpers_loaded = True
         return True
@@ -82,7 +98,7 @@ class PositioningRunner:
         results = self._process_queries()
         self._save_results(results)
         self._cleanup_temp_processed_queries()
-        print("\nComplete")
+        _logger.info("\nComplete")
 
     def _validate_paths(self) -> None:
         """Ensures all necessary data paths are provided in the config.
@@ -112,9 +128,6 @@ class PositioningRunner:
         Returns:
             None.
         """
-        pcfg = self.config.preprocessing
-        if not pcfg.get("enabled", False):
-            return
         from src.utils.preprocessing import CameraModel, QueryPreprocessor
 
         cam_model = None
@@ -123,13 +136,8 @@ class PositioningRunner:
             params = {k: v for k, v in self.config.camera_model.items() if k in v_keys}
             cam_model = CameraModel(**params)
         self.preprocessor = QueryPreprocessor(
-            processings=pcfg.get("steps", []),
-            resize_target=pcfg.get("resize_target"),
             camera_model=cam_model,
-            target_gimbal_yaw=pcfg.get("target_gimbal_yaw", 0.0),
-            target_gimbal_pitch=pcfg.get("target_gimbal_pitch", -90.0),
-            target_gimbal_roll=pcfg.get("target_gimbal_roll", 0.0),
-            adaptive_yaw=pcfg.get("adaptive_yaw", False),
+            device=self.config.device if hasattr(self.config, "device") else "cpu",
         )
 
     def _initialize_pipeline(self) -> None:
@@ -155,7 +163,9 @@ class PositioningRunner:
             self.query_df.columns = self.query_df.columns.str.strip()
             self.map_df.columns = self.map_df.columns.str.strip()
         except Exception as e:
-            raise RuntimeError(f"CRITICAL: Failed to load metadata CSV files: {e}") from e
+            raise RuntimeError(
+                f"CRITICAL: Failed to load metadata CSV files: {e}"
+            ) from e
         self._validate_metadata_columns()
 
     def _validate_metadata_columns(self) -> None:
@@ -166,7 +176,15 @@ class PositioningRunner:
         """
         if self.query_df is None or self.map_df is None:
             return
-        rq = ["Filename", "Latitude", "Longitude"]
+        rq = [
+            "Filename",
+            "Latitude",
+            "Longitude",
+            "Gimball_Yaw",
+            "Gimball_Pitch",
+            "Gimball_Roll",
+            "Flight_Yaw",
+        ]
         rm = [
             "Filename",
             "Top_left_lat",
@@ -174,9 +192,6 @@ class PositioningRunner:
             "Bottom_right_lat",
             "Bottom_right_long",
         ]
-        p_cfg = self.config.preprocessing
-        if p_cfg.get("enabled") and "warp" in p_cfg.get("steps", []):
-            rq.extend(["Gimball_Yaw", "Gimball_Pitch", "Gimball_Roll", "Flight_Yaw"])
         mq = [c for c in rq if c not in self.query_df.columns]
         mm = [c for c in rm if c not in self.map_df.columns]
         if mq:
@@ -195,7 +210,7 @@ class PositioningRunner:
             return results
         p_cfg = self.config.preprocessing
         temp_dir = None
-        if self.assets_dir is not None and p_cfg.get("enabled", False):
+        if self.assets_dir is not None:
             if p_cfg.get("save_processed", False):
                 temp_dir = self.assets_dir / "processed_queries"
             else:
@@ -208,7 +223,7 @@ class PositioningRunner:
             try:
                 results.append(self._process_single_query(row, temp_dir, m_inl, s_viz))
             except Exception as e:
-                print(f"\n  CRITICAL ERROR on query {row.get('Filename')}: {e}")
+                _logger.info(f"\n  CRITICAL ERROR on query {row.get('Filename')}: {e}")
                 results.append(
                     QueryResult(
                         query_filename=str(row.get("Filename")),
@@ -218,7 +233,9 @@ class PositioningRunner:
                 )
         return results
 
-    def _process_single_query(self, row, temp_dir, min_inliers, save_viz) -> QueryResult:
+    def _process_single_query(
+        self, row, temp_dir, min_inliers, save_viz
+    ) -> QueryResult:
         """Processes a single query through the engine.
 
         Args:
@@ -366,7 +383,10 @@ class PositioningRunner:
         return (
             not curr.success
             or new["inliers"] > curr.inliers
-            or (new["inliers"] == curr.inliers and new["error_meters"] < curr.error_meters)
+            or (
+                new["inliers"] == curr.inliers
+                and new["error_meters"] < curr.error_meters
+            )
         )
 
     def _update(self, res, m_res) -> None:
@@ -381,7 +401,10 @@ class PositioningRunner:
         """
         res.best_map_filename, res.inliers = m_res["map_filename"], m_res["inliers"]
         res.outliers, res.time = m_res["outliers"], m_res["time"]
-        res.predicted_latitude, res.predicted_longitude = m_res["pred_lat"], m_res["pred_lon"]
+        res.predicted_latitude, res.predicted_longitude = (
+            m_res["pred_lat"],
+            m_res["pred_lon"],
+        )
         res.error_meters, res.success = m_res["error_meters"], True
         res.failure_reason = None
 

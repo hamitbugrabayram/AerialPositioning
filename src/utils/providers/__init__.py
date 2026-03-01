@@ -27,7 +27,9 @@ def get_provider(name: str) -> BaseTileProvider:
     provider = providers.get(name.lower())
     if provider is None:
         supported = ", ".join(sorted(providers.keys()))
-        raise ValueError(f"Unsupported tile provider '{name}'. Supported providers: {supported}")
+        raise ValueError(
+            f"Unsupported tile provider '{name}'. Supported providers: {supported}"
+        )
     return provider
 
 

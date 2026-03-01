@@ -4,17 +4,26 @@ This module provides classes for managing positioning results, saving them to CS
 and computing performance statistics.
 """
 
+
 from pathlib import Path
-from typing import Any, List
+from typing import List
 
 import numpy as np
 import pandas as pd
 
 from src.models.config import QueryResult
 
+from src.utils.logger import get_logger
+_logger = get_logger(__name__)
+
 
 class ResultManager:
-    """Manages the lifecycle of positioning results and statistics."""
+    """Manages the lifecycle of positioning results and statistics.
+
+    Attributes:
+        output_dir (Path): The root experiment directory.
+        assets_dir (Path): The directory for summary assets.
+    """
 
     def __init__(self, output_dir: Path, assets_dir: Path):
         """Initializes the manager with output directories.
@@ -33,14 +42,14 @@ class ResultManager:
         """Saves cumulative results and prints overall statistics.
 
         Args:
-            results: List of results for each processed query.
-            query_df_len: Original number of queries in the dataset.
+            results (List[QueryResult]): List of results for each processed query.
+            query_df_len (int): Original number of queries in the dataset.
 
         Returns:
             None.
         """
         if not results:
-            print("No results to save.")
+            _logger.info("No results to save.")
             return
 
         df = self._create_summary_df(results)
@@ -48,9 +57,9 @@ class ResultManager:
 
         try:
             df.to_csv(csv_path, index=False, float_format="%.7f")
-            print(f"\nSummary saved: {csv_path}")
+            _logger.info(f"\nSummary saved: {csv_path}")
         except Exception as e:
-            print(f"ERROR saving summary CSV: {e}")
+            _logger.info(f"ERROR saving summary CSV: {e}")
 
         self.print_statistics(df, results, query_df_len)
 
@@ -58,10 +67,10 @@ class ResultManager:
         """Converts result objects into a pandas DataFrame.
 
         Args:
-            results: List of query results.
+            results (List[QueryResult]): List of query results.
 
         Returns:
-            Tabular dataframe representation of query results.
+            pd.DataFrame: Tabular dataframe representation of query results.
         """
         data = []
         for r in results:
@@ -92,9 +101,9 @@ class ResultManager:
         """Computes and displays global performance statistics.
 
         Args:
-            df: Summary DataFrame of results.
-            results: List of result objects.
-            total_queries: Total number of queries available.
+            df (pd.DataFrame): Summary DataFrame of results.
+            results (List[QueryResult]): List of result objects.
+            total_queries (int): Total number of queries available.
 
         Returns:
             None.
@@ -104,20 +113,20 @@ class ResultManager:
         num_successful = len(successful)
         rate = (num_successful / num_processed * 100) if num_processed > 0 else 0.0
 
-        print("\nPositioning Statistics")
-        print(f"Total Queries: {total_queries}")
-        print(f"Processed: {num_processed}")
-        print(f"Successful: {num_successful}")
-        print(f"Success Rate: {rate:.2f}%")
+        _logger.info("\nPositioning Statistics")
+        _logger.info(f"Total Queries: {total_queries}")
+        _logger.info(f"Processed: {num_processed}")
+        _logger.info(f"Successful: {num_successful}")
+        _logger.info(f"Success Rate: {rate:.2f}%")
 
         if num_successful > 0:
             errs = successful["Error (m)"].astype(float)
-            print(f"Avg Error: {errs.mean():.2f} m")
-            print(f"Median Error: {np.median(errs.tolist()):.2f} m")
-            print(f"P90 Error: {np.percentile(errs, 90):.2f} m")
-            print(f"Max Error: {errs.max():.2f} m")
-            print(f"Avg Inliers: {successful['Inliers'].mean():.1f}")
-            print(f"Avg Time: {df['Best Match Time (s)'].mean():.3f} s")
+            _logger.info(f"Avg Error: {errs.mean():.2f} m")
+            _logger.info(f"Median Error: {np.median(errs.tolist()):.2f} m")
+            _logger.info(f"P90 Error: {np.percentile(errs, 90):.2f} m")
+            _logger.info(f"Max Error: {errs.max():.2f} m")
+            _logger.info(f"Avg Inliers: {successful['Inliers'].mean():.1f}")
+            _logger.info(f"Avg Time: {df['Best Match Time (s)'].mean():.3f} s")
         if "Search Radius (m)" in df.columns:
             radius_counts = (
                 df["Search Radius (m)"]
@@ -131,4 +140,4 @@ class ResultManager:
                     f"{int(radius)}m: {int(count)}"
                     for radius, count in radius_counts.items()
                 )
-                print(f"Radius Usage: {radius_text}")
+                _logger.info(f"Radius Usage: {radius_text}")

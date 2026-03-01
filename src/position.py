@@ -1,3 +1,4 @@
+
 """Aerial Positioning via Satellite Imagery.
 
 This script provides a GNSS-free aerial positioning system using satellite imagery.
@@ -23,6 +24,9 @@ from pathlib import Path
 from src.core import PositioningRunner
 from src.core.evaluator import Evaluator
 from src.models import PositioningConfig
+
+from src.utils.logger import get_logger
+_logger = get_logger(__name__)
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -79,7 +83,7 @@ def main() -> int:
     config_path = Path(args.config)
 
     if not config_path.exists():
-        print(f"Error: Config not found: {config_path}")
+        _logger.info(f"Error: Config not found: {config_path}")
         return 1
 
     try:
@@ -95,11 +99,11 @@ def main() -> int:
         return 0
 
     except KeyboardInterrupt:
-        print("\nOperation cancelled by user.")
+        _logger.info("\nOperation cancelled by user.")
         return 1
 
     except Exception as e:
-        print(f"\nERROR: Positioning failed: {e}")
+        _logger.info(f"\nERROR: Positioning failed: {e}")
         traceback.print_exc()
         return 1
 

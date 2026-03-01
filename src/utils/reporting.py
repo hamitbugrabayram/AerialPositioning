@@ -2,17 +2,27 @@
 
 from __future__ import annotations
 
+
 import math
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import yaml
 
+from src.utils.logger import get_logger
+_logger = get_logger(__name__)
+
 
 class ReportGenerator:
-    """Handles result summarization and report generation."""
+    """Handles result summarization and report generation.
+
+    Attributes:
+        project_root (Path): Repository root directory.
+        results_root (Path): Root directory that contains experiment outputs.
+        summary_md (Path): Path to the generated markdown report.
+    """
 
     def __init__(self, project_root: Path, results_root: Path):
         """Initializes report output paths.
@@ -140,7 +150,9 @@ class ReportGenerator:
                 .value_counts()
                 .sort_index()
             )
-            radius_counts = {f"{int(radius)}m": int(count) for radius, count in radius_series.items()}
+            radius_counts = {
+                f"{int(radius)}m": int(count) for radius, count in radius_series.items()
+            }
 
         top_failures: Dict[str, int] = {}
         if "Failure Reason" in df.columns:
@@ -151,7 +163,9 @@ class ReportGenerator:
                 .value_counts()
                 .head(5)
             )
-            top_failures = {str(reason): int(count) for reason, count in fail_series.items()}
+            top_failures = {
+                str(reason): int(count) for reason, count in fail_series.items()
+            }
 
         def safe_stat(value: float) -> float:
             """Normalizes NaN numeric outputs for report serialization.
@@ -176,14 +190,30 @@ class ReportGenerator:
             "SuccessfulFrames": success,
             "FailedFrames": failed,
             "SuccessRatePct": success_rate,
-            "MeanErrorM": safe_stat(float(errors.mean())) if not errors.empty else float("nan"),
-            "MedianErrorM": safe_stat(float(errors.median())) if not errors.empty else float("nan"),
-            "P90ErrorM": safe_stat(float(errors.quantile(0.9))) if not errors.empty else float("nan"),
-            "MaxErrorM": safe_stat(float(errors.max())) if not errors.empty else float("nan"),
-            "MeanInliers": safe_stat(float(inliers.mean())) if not inliers.empty else float("nan"),
-            "MeanMatchTimeS": safe_stat(float(times.mean())) if not times.empty else float("nan"),
-            "MeanCandidateMaps": safe_stat(float(candidates.mean())) if not candidates.empty else float("nan"),
-            "MeanEvaluatedMaps": safe_stat(float(evaluated.mean())) if not evaluated.empty else float("nan"),
+            "MeanErrorM": safe_stat(float(errors.mean()))
+            if not errors.empty
+            else float("nan"),
+            "MedianErrorM": safe_stat(float(errors.median()))
+            if not errors.empty
+            else float("nan"),
+            "P90ErrorM": safe_stat(float(errors.quantile(0.9)))
+            if not errors.empty
+            else float("nan"),
+            "MaxErrorM": safe_stat(float(errors.max()))
+            if not errors.empty
+            else float("nan"),
+            "MeanInliers": safe_stat(float(inliers.mean()))
+            if not inliers.empty
+            else float("nan"),
+            "MeanMatchTimeS": safe_stat(float(times.mean()))
+            if not times.empty
+            else float("nan"),
+            "MeanCandidateMaps": safe_stat(float(candidates.mean()))
+            if not candidates.empty
+            else float("nan"),
+            "MeanEvaluatedMaps": safe_stat(float(evaluated.mean()))
+            if not evaluated.empty
+            else float("nan"),
             "RadiusUsage": radius_counts,
             "TopFailureReasons": top_failures,
         }
@@ -231,7 +261,9 @@ class ReportGenerator:
 
         total_frames = int(summary_df["TotalFrames"].sum())
         total_success = int(summary_df["SuccessfulFrames"].sum())
-        overall_rate = (100.0 * total_success / total_frames) if total_frames > 0 else 0.0
+        overall_rate = (
+            (100.0 * total_success / total_frames) if total_frames > 0 else 0.0
+        )
 
         lines.extend(
             [
@@ -316,12 +348,16 @@ class ReportGenerator:
 
             radius_usage = row.get("RadiusUsage", {})
             if isinstance(radius_usage, dict) and radius_usage:
-                radius_text = ", ".join(f"{key}: {value}" for key, value in radius_usage.items())
+                radius_text = ", ".join(
+                    f"{key}: {value}" for key, value in radius_usage.items()
+                )
                 lines.append(f"- Radius Usage: {radius_text}")
 
             top_failures = row.get("TopFailureReasons", {})
             if isinstance(top_failures, dict) and top_failures:
-                fail_text = ", ".join(f"{key}: {value}" for key, value in top_failures.items())
+                fail_text = ", ".join(
+                    f"{key}: {value}" for key, value in top_failures.items()
+                )
                 lines.append(f"- Top Failure Reasons: {fail_text}")
 
             lines.append("")
@@ -336,7 +372,7 @@ class ReportGenerator:
                 regions are included in report outputs.
         """
         if not self.results_root.exists():
-            print("No results directory found.")
+            _logger.info("No results directory found.")
             return
 
         metrics_list: List[Dict[str, Any]] = []
@@ -352,7 +388,7 @@ class ReportGenerator:
             metrics_list.append(metrics)
 
         if not metrics_list:
-            print("No valid results found to summarize.")
+            _logger.info("No valid results found to summarize.")
             return
 
         summary_df = pd.DataFrame(metrics_list).sort_values(
@@ -375,5 +411,5 @@ class ReportGenerator:
             "MeanInliers",
             "MeanMatchTimeS",
         ]
-        print("\n" + summary_df[display_cols].to_string(index=False))
-        print(f"\nMarkdown report saved: {self.summary_md}")
+        _logger.info("\n" + summary_df[display_cols].to_string(index=False))
+        _logger.info(f"\nMarkdown report saved: {self.summary_md}")

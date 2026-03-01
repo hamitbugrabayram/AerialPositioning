@@ -4,6 +4,7 @@ This module implements the GIM framework which supports multiple matching
 backends including DKM, LoFTR, and LightGlue variants via strategy pattern.
 """
 
+
 import sys
 import time
 import warnings
@@ -16,6 +17,9 @@ import torch
 
 from ..base import BaseMatcher
 from .strategies import DkmStrategy, GimStrategy, LightGlueStrategy, LoftrStrategy
+
+from src.utils.logger import get_logger
+_logger = get_logger(__name__)
 
 _GIM_PATH = Path(__file__).resolve().parent.parent.parent.parent / "matchers/gim"
 if str(_GIM_PATH) not in sys.path:
@@ -33,14 +37,15 @@ def preprocess_for_gim(
     """Preprocesses an image for GIM models.
 
     Args:
-        image: Input image as numpy array.
-        grayscale: If True, convert to grayscale.
-        resize_max: Maximum dimension for resizing.
-        dfactor: Factor for ensuring dimensions are divisible.
-        device: Torch device for processing.
+        image (np.ndarray): Input image as numpy array.
+        grayscale (bool): If True, convert to grayscale.
+        resize_max (Optional[int]): Maximum dimension for resizing.
+        dfactor (int): Factor for ensuring dimensions are divisible.
+        device (Optional[torch.device]): Torch device for processing.
 
     Returns:
-        Tuple of (normalized_tensor, scale_to_original, original_size_wh).
+        Tuple[Optional[torch.Tensor], Optional[np.ndarray], Optional[Tuple[int, int]]]:
+            Tuple of (normalized_tensor, scale_to_original, original_size_wh).
     """
     if image is None or image.size == 0:
         return None, None, None
@@ -95,7 +100,7 @@ def preprocess_for_gim(
         return image_tensor, scale_to_original, original_size_wh
 
     except Exception as e:
-        print(f"ERROR during GIM preprocessing: {e}")
+        _logger.info(f"ERROR during GIM preprocessing: {e}")
         return None, None, None
 
 
@@ -105,8 +110,10 @@ class GimPipeline(BaseMatcher):
     Uses Strategy Pattern to support DKM, LoFTR, and LightGlue backends.
 
     Attributes:
-        model_type: Selected GIM variant ('dkm', 'loftr', 'lightglue').
-        strategy: The active matching strategy instance.
+        model_type (str): Selected GIM variant ('dkm', 'loftr', 'lightglue').
+        strategy (GimStrategy): The active matching strategy instance.
+        weights_path (str): Path to the model weights.
+        gim_params (Dict[str, Any]): Configuration parameters for GIM.
     """
 
     SUPPORTED_MODELS = {"dkm", "loftr", "lightglue"}
@@ -120,7 +127,7 @@ class GimPipeline(BaseMatcher):
         """Initializes the GIM pipeline with the selected strategy.
 
         Args:
-            config: Configuration dictionary.
+            config (Dict[str, Any]): Configuration dictionary.
 
         Raises:
             FileNotFoundError: If weights file is missing.
@@ -151,7 +158,11 @@ class GimPipeline(BaseMatcher):
         return f"GIM ({self.model_type.upper()})"
 
     def _create_strategy(self) -> GimStrategy:
-        """Creates the appropriate strategy based on model type."""
+        """Creates the appropriate strategy based on model type.
+
+        Returns:
+            GimStrategy: The instantiated strategy object.
+        """
         state_dict = torch.load(self.weights_path, map_location="cpu")
         if isinstance(state_dict, dict) and "state_dict" in state_dict:
             state_dict = state_dict["state_dict"]
@@ -162,12 +173,21 @@ class GimPipeline(BaseMatcher):
     def _read_and_preprocess(
         self, image_path: Path, grayscale: bool = False
     ) -> Tuple[Optional[torch.Tensor], Optional[np.ndarray], Optional[Tuple[int, int]]]:
-        """Reads and prepares an image file for matching."""
+        """Reads and prepares an image file for matching.
+
+        Args:
+            image_path (Path): Path to the image.
+            grayscale (bool): Whether to load as grayscale.
+
+        Returns:
+            Tuple[Optional[torch.Tensor], Optional[np.ndarray], Optional[Tuple[int, int]]]:
+                A tuple of the normalized tensor, scale array, and original size.
+        """
         mode = cv2.IMREAD_GRAYSCALE if grayscale else cv2.IMREAD_COLOR
         image = cv2.imread(str(image_path), mode)
 
         if image is None:
-            print(f"Cannot read image: {image_path.name}")
+            _logger.info(f"Cannot read image: {image_path.name}")
             return None, None, None
 
         if not grayscale and image.ndim == 3:
@@ -192,11 +212,11 @@ class GimPipeline(BaseMatcher):
         """Matches features between query and map images.
 
         Args:
-            image0_path: Path to the query image.
-            image1_path: Path to the satellite map tile.
+            image0_path (Union[str, Path]): Path to the query image.
+            image1_path (Union[str, Path]): Path to the satellite map tile.
 
         Returns:
-            Dictionary containing match coordinates and success status.
+            Dict[str, Any]: Dictionary containing match coordinates and success status.
         """
         start_time = time.time()
         results = self._create_empty_result()
@@ -265,7 +285,7 @@ class GimPipeline(BaseMatcher):
             self._update_result_with_homography(results, homography, inlier_mask)
 
         except Exception as e:
-            print(f"ERROR during GIM ({self.model_type}) matching: {e}")
+            _logger.info(f"ERROR during GIM ({self.model_type}) matching: {e}")
 
         finally:
             results["time"] = time.time() - start_time

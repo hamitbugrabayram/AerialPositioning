@@ -1,91 +1,34 @@
 """Image preprocessing utilities for aerial imagery.
 
-This module provides tools for:
-- Image resizing with aspect ratio preservation.
-- Camera intrinsics modeling.
-- Perspective warping for nadir view simulation.
+This module provides tools for image resizing and perspective warping
+to simulate nadir views. It strictly aligns oblique drone images to a
+nadir (top-down), north-facing perspective to match satellite map tiles.
 
-Uses PyTorch and OpenCV for image processing.
+Attributes:
+    _RESIZE_TARGET (int): The target length for the longest edge of the image.
+    _TARGET_YAW (float): Geographic north orientation target (0.0).
+    _TARGET_PITCH (float): Nadir (top-down) orientation target (-90.0).
+    _TARGET_ROLL (float): Horizontal level target (0.0).
 """
 
 import math
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-USE_GPU = torch.cuda.is_available()
+_RESIZE_TARGET = 1024
+_TARGET_YAW = 0.0
+_TARGET_PITCH = -90.0
+_TARGET_ROLL = 0.0
+_MAX_WARP_DISTORTION = 10
 
 
 class PreprocessingError(Exception):
     """Custom exception for image preprocessing failures."""
-
-    pass
-
-
-def find_nearest_90_multiple(angle: float) -> float:
-    """Finds the nearest multiple of 90 degrees to the given angle.
-
-    This is useful for adaptive yaw targeting where we want to minimize
-    the rotation angle needed during perspective warping.
-
-    Args:
-        angle: Input angle in degrees.
-
-    Returns:
-        Nearest multiple of 90 degrees in range [-180, 180).
-    """
-    normalized = ((angle + 180) % 360) - 180
-    candidates = [-180.0, -90.0, 0.0, 90.0, 180.0]
-    best_candidate = 0.0
-    min_diff = float("inf")
-    for candidate in candidates:
-        diff = abs(normalized - candidate)
-        if diff < min_diff:
-            min_diff = diff
-            best_candidate = candidate
-    if best_candidate == 180.0:
-        best_candidate = -180.0
-    return best_candidate
-
-
-def compute_resize_dimensions(
-    width: int, height: int, resize_target: Union[int, List[int]]
-) -> Tuple[int, int]:
-    """Calculates new dimensions based on resize parameters.
-
-    Args:
-        width: Original image width.
-        height: Original image height.
-        resize_target: Target size specification (int or list of [w, h]).
-
-    Returns:
-        Tuple of (new_width, new_height).
-    """
-    if height <= 0 or width <= 0:
-        return width, height
-    max_dim = max(height, width)
-    if isinstance(resize_target, int) and resize_target > 0:
-        scale = resize_target / max_dim
-        new_width = int(round(width * scale))
-        new_height = int(round(height * scale))
-    elif isinstance(resize_target, (list, tuple)) and len(resize_target) == 2:
-        new_width, new_height = int(resize_target[0]), int(resize_target[1])
-    elif (
-        isinstance(resize_target, (list, tuple))
-        and len(resize_target) == 1
-        and resize_target[0] > 0
-    ):
-        scale = resize_target[0] / max_dim
-        new_width = int(round(width * scale))
-        new_height = int(round(height * scale))
-    else:
-        new_width, new_height = width, height
-    return max(1, new_width), max(1, new_height)
 
 
 @dataclass
@@ -93,10 +36,15 @@ class CameraModel:
     """Camera intrinsic parameters model.
 
     Attributes:
-        focal_length: Focal length in millimeters.
-        resolution_width: Sensor width in pixels.
-        resolution_height: Sensor height in pixels.
-        hfov_deg: Horizontal Field of View in degrees.
+        focal_length (float): Focal length in millimeters.
+        resolution_width (int): Sensor width in pixels.
+        resolution_height (int): Sensor height in pixels.
+        hfov_deg (float): Horizontal Field of View in degrees.
+        hfov_rad (float): Horizontal Field of View in radians.
+        aspect_ratio (float): Image aspect ratio (width / height).
+        focal_length_px (float): Focal length in pixels.
+        principal_point_x (float): Principal point X coordinate in pixels.
+        principal_point_y (float): Principal point Y coordinate in pixels.
     """
 
     focal_length: float
@@ -110,46 +58,110 @@ class CameraModel:
     principal_point_y: float = field(init=False)
 
     def __post_init__(self) -> None:
-        """Calculates derived camera parameters."""
+        """Calculates derived camera parameters.
+
+        Raises:
+            ValueError: If camera dimensions or field of view are invalid.
+        """
         if (
             self.resolution_width <= 0
             or self.resolution_height <= 0
             or self.hfov_deg <= 0
         ):
             raise ValueError("Camera dimensions and HFOV must be positive.")
+
         self.hfov_rad = math.radians(self.hfov_deg)
         self.aspect_ratio = self.resolution_width / self.resolution_height
         tan_half_fov = math.tan(self.hfov_rad / 2.0)
+
         if abs(tan_half_fov) < 1e-9:
             raise ValueError("HFOV results in near-zero tan value.")
+
         self.focal_length_px = (self.resolution_width / 2.0) / tan_half_fov
         self.principal_point_x = self.resolution_width / 2.0
         self.principal_point_y = self.resolution_height / 2.0
 
 
-def get_intrinsic_matrix(
-    camera_model: CameraModel, scale: float = 1.0, as_tensor: bool = False
+def _compute_resize_dimensions(
+    width: int, height: int, target_max_dim: int
+) -> Tuple[int, int]:
+    """Calculates new dimensions maintaining aspect ratio.
+
+    Args:
+        width: Original image width.
+        height: Original image height.
+        target_max_dim: Desired size for the longest edge.
+
+    Returns:
+        Tuple of (new_width, new_height).
+    """
+    if height <= 0 or width <= 0:
+        return width, height
+
+    max_dim = max(height, width)
+    scale = target_max_dim / float(max_dim)
+    new_width = int(round(width * scale))
+    new_height = int(round(height * scale))
+
+    return max(1, new_width), max(1, new_height)
+
+
+def _get_intrinsic_matrix(
+    camera_model: CameraModel,
+    scale: float = 1.0,
+    as_tensor: bool = False,
+    device: Optional[torch.device] = None,
 ) -> Union[np.ndarray, torch.Tensor]:
-    """Constructs the 3x3 camera intrinsics matrix K."""
+    """Constructs the 3x3 camera intrinsics matrix K.
+
+    Args:
+        camera_model: The camera parameters model.
+        scale: Scale factor for the intrinsic matrix.
+        as_tensor: Whether to return a PyTorch tensor instead of NumPy array.
+        device: The PyTorch device to place the tensor on.
+
+    Returns:
+        The 3x3 intrinsic matrix.
+    """
     if scale <= 0:
         scale = 1.0
+
     fx = camera_model.focal_length_px / scale
     fy = camera_model.focal_length_px / scale
     cx = camera_model.principal_point_x / scale
     cy = camera_model.principal_point_y / scale
+
     k_matrix = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float32)
-    if as_tensor and USE_GPU:
-        return torch.from_numpy(k_matrix).to(DEVICE)
+
+    if as_tensor and device is not None and device.type == "cuda":
+        return torch.from_numpy(k_matrix).to(device)
+
     return k_matrix
 
 
-def euler_to_rotation_matrix(
-    roll: float, pitch: float, yaw: float, as_tensor: bool = False
+def _euler_to_rotation_matrix(
+    roll: float,
+    pitch: float,
+    yaw: float,
+    as_tensor: bool = False,
+    device: Optional[torch.device] = None,
 ) -> Union[np.ndarray, torch.Tensor]:
-    """Computes 3x3 rotation matrix from Euler angles."""
+    """Computes a 3x3 rotation matrix from Euler angles.
+
+    Args:
+        roll: Roll angle in degrees.
+        pitch: Pitch angle in degrees.
+        yaw: Yaw angle in degrees.
+        as_tensor: Whether to return a PyTorch tensor instead of NumPy array.
+        device: The PyTorch device to place the tensor on.
+
+    Returns:
+        The 3x3 rotation matrix.
+    """
     r_rad = math.radians(float(roll))
     p_rad = math.radians(float(pitch))
     y_rad = math.radians(float(yaw))
+
     cz = np.array(
         [
             math.cos(y_rad) * math.cos(p_rad),
@@ -159,7 +171,9 @@ def euler_to_rotation_matrix(
     )
     cx = np.array([math.sin(y_rad), -math.cos(y_rad), 0.0])
     cy = np.cross(cz, cx)
+
     rotation_matrix = np.stack([cx, cy, cz], axis=1).astype(np.float32)
+
     if abs(roll) > 1e-6:
         cos_r = math.cos(r_rad)
         sin_r = math.sin(r_rad)
@@ -167,45 +181,78 @@ def euler_to_rotation_matrix(
             [[cos_r, -sin_r, 0], [sin_r, cos_r, 0], [0, 0, 1]], dtype=np.float32
         )
         rotation_matrix = rotation_matrix @ rr_matrix
-    if as_tensor and USE_GPU:
-        return torch.from_numpy(rotation_matrix).to(DEVICE)
+
+    if as_tensor and device is not None and device.type == "cuda":
+        return torch.from_numpy(rotation_matrix).to(device)
+
     return rotation_matrix
 
 
 class QueryPreprocessor:
-    """Image preprocessing pipeline using PyTorch and OpenCV."""
+    """Generic image preprocessing pipeline for satellite alignment.
+
+    This pipeline unconditionally applies a fixed sequence of operations:
+    1. Resizing to standard dimensions (`_RESIZE_TARGET`).
+    2. Perspective warping to a nadir, north-oriented view (`_TARGET_PITCH`,
+       `_TARGET_YAW`, `_TARGET_ROLL`).
+
+    Attributes:
+        camera_model (CameraModel): The camera intrinsics used for warping.
+        device (torch.device): Compute device for tensor operations.
+        use_gpu (bool): Flag indicating if CUDA is available and selected.
+    """
 
     def __init__(
         self,
-        processings: Optional[List[str]] = None,
-        resize_target: Optional[Union[int, List[int]]] = None,
         camera_model: Optional[CameraModel] = None,
-        target_gimbal_yaw: float = 0.0,
-        target_gimbal_pitch: float = -90.0,
-        target_gimbal_roll: float = 0.0,
-        adaptive_yaw: bool = False,
         device: Optional[str] = None,
     ) -> None:
-        """Initializes the preprocessor."""
-        self.resize_target = resize_target
+        """Initializes the generic preprocessor.
+
+        Args:
+            camera_model: Optional camera model; required for warping.
+            device: Optional specific device string (e.g., "cuda:0").
+        """
         self.camera_model = camera_model
-        self.target_gimbal_yaw = target_gimbal_yaw
-        self.target_gimbal_pitch = target_gimbal_pitch
-        self.target_gimbal_roll = target_gimbal_roll
-        self.adaptive_yaw = adaptive_yaw
-        self.processings = processings if processings else []
+
         if device:
             self.device = torch.device(device)
         else:
-            self.device = DEVICE
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         self.use_gpu = self.device.type == "cuda"
-        self._step_handlers: Dict[str, Callable] = {
-            "resize": self._apply_resize,
-            "warp": self._apply_warp,
-        }
+
+    def __call__(self, image: np.ndarray, metadata: Dict[str, Any]) -> np.ndarray:
+        """Applies the fixed resize and warp pipeline to the input image.
+
+        Args:
+            image: The raw input image array.
+            metadata: Query metadata containing gimbal and flight angles.
+
+        Returns:
+            The processed, nadir-aligned image array.
+
+        Raises:
+            PreprocessingError: If any pipeline step fails.
+        """
+        try:
+            resized = self._apply_resize(image)
+            warped = self._apply_warp(resized, metadata)
+            return warped
+        except Exception as e:
+            raise PreprocessingError(
+                f"CRITICAL: Preprocessing pipeline failed: {e}"
+            ) from e
 
     def _to_tensor(self, image: np.ndarray) -> torch.Tensor:
-        """Converts numpy image to GPU tensor."""
+        """Converts an OpenCV BGR/RGB image to a normalized PyTorch tensor.
+
+        Args:
+            image: The NumPy image array.
+
+        Returns:
+            A normalized float tensor on the target device.
+        """
         if len(image.shape) == 3 and image.shape[2] == 3:
             image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         else:
@@ -214,34 +261,37 @@ class QueryPreprocessor:
         return tensor.unsqueeze(0).to(self.device)
 
     def _to_numpy(self, tensor: torch.Tensor) -> np.ndarray:
-        """Converts GPU tensor to numpy image."""
+        """Converts a normalized PyTorch tensor back to an OpenCV BGR image.
+
+        Args:
+            tensor: The normalized PyTorch tensor.
+
+        Returns:
+            An 8-bit unsigned integer NumPy image array.
+        """
         image = tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
         image = (image * 255).clip(0, 255).astype(np.uint8)
         if len(image.shape) == 3 and image.shape[2] == 3:
             image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         return image
 
-    def __call__(self, image: np.ndarray, metadata: Dict[str, Any]) -> np.ndarray:
-        """Applies preprocessing pipeline to an image."""
-        processed = image.copy()
-        for step_name in self.processings:
-            if step_name in self._step_handlers:
-                try:
-                    processed = self._step_handlers[step_name](processed, metadata)
-                except Exception as e:
-                    raise PreprocessingError(
-                        f"CRITICAL: Preprocessing step '{step_name}' failed: {e}"
-                    ) from e
-            else:
-                raise PreprocessingError(f"CRITICAL: Unknown step '{step_name}' requested.")
-        return processed
+    def _apply_resize(self, image: np.ndarray) -> np.ndarray:
+        """Resizes the image to the standard target size.
 
-    def _apply_resize(self, image: np.ndarray, metadata: Dict[str, Any]) -> np.ndarray:
-        """Applies resize transformation."""
-        if self.resize_target is None:
-            return image
+        Args:
+            image: The input NumPy image.
+
+        Returns:
+            The resized NumPy image.
+
+        Raises:
+            PreprocessingError: If GPU-based resizing fails.
+        """
         height, width = image.shape[:2]
-        new_width, new_height = compute_resize_dimensions(width, height, self.resize_target)
+        new_width, new_height = _compute_resize_dimensions(
+            width, height, _RESIZE_TARGET
+        )
+
         if (new_width, new_height) == (width, height):
             return image
 
@@ -264,13 +314,28 @@ class QueryPreprocessor:
         return cv2.resize(image, (new_width, new_height), interpolation=interpolation)
 
     def _apply_warp(self, image: np.ndarray, metadata: Dict[str, Any]) -> np.ndarray:
-        """Applies perspective warp transformation."""
+        """Applies perspective warp to simulate a nadir, north-oriented view.
+
+        Args:
+            image: The resized NumPy image.
+            metadata: Metadata containing 'Gimball_Yaw', 'Gimball_Pitch',
+                'Gimball_Roll', and 'Flight_Yaw'.
+
+        Returns:
+            The warped, top-down NumPy image.
+
+        Raises:
+            PreprocessingError: If the camera model is missing, dimensions
+                are invalid, or the homography fails.
+        """
         if self.camera_model is None:
             raise PreprocessingError("Camera model required for warping.")
 
         height_orig, width_orig = image.shape[:2]
         if height_orig <= 0 or width_orig <= 0:
-            raise PreprocessingError(f"Invalid image dimensions: {width_orig}x{height_orig}")
+            raise PreprocessingError(
+                f"Invalid image dimensions: {width_orig}x{height_orig}"
+            )
 
         gimbal_yaw = float(metadata.get("Gimball_Yaw", 0.0))
         gimbal_pitch = float(metadata.get("Gimball_Pitch", -90.0))
@@ -281,25 +346,22 @@ class QueryPreprocessor:
         current_pitch = gimbal_pitch
         current_roll = gimbal_roll
 
-        if self.adaptive_yaw:
-            target_yaw = find_nearest_90_multiple(current_yaw)
-        else:
-            target_yaw = self.target_gimbal_yaw
-
-        r_current = euler_to_rotation_matrix(current_roll, current_pitch, current_yaw)
-        r_target = euler_to_rotation_matrix(
-            self.target_gimbal_roll, self.target_gimbal_pitch, target_yaw
-        )
+        r_current = _euler_to_rotation_matrix(current_roll, current_pitch, current_yaw)
+        r_target = _euler_to_rotation_matrix(_TARGET_ROLL, _TARGET_PITCH, _TARGET_YAW)
 
         scale_w = width_orig / self.camera_model.resolution_width
         scale_h = height_orig / self.camera_model.resolution_height
-        k_matrix = get_intrinsic_matrix(self.camera_model, scale=1 / max(scale_w, scale_h))
+        k_matrix = _get_intrinsic_matrix(
+            self.camera_model, scale=1.0 / max(scale_w, scale_h)
+        )
 
         try:
             homography = k_matrix @ r_current.T @ r_target @ np.linalg.inv(k_matrix)
             homography = homography.astype(np.float32)
         except np.linalg.LinAlgError as e:
-            raise PreprocessingError(f"Singular matrix during homography calculation: {e}") from e
+            raise PreprocessingError(
+                f"Singular matrix during homography calculation: {e}"
+            ) from e
 
         corners = np.array(
             [[0, 0], [width_orig, 0], [width_orig, height_orig], [0, height_orig]],
@@ -317,9 +379,14 @@ class QueryPreprocessor:
             height_new = int(round(y_max - y_min))
 
             if width_new <= 0 or height_new <= 0:
-                raise PreprocessingError(f"Invalid warped dimensions: {width_new}x{height_new}")
+                raise PreprocessingError(
+                    f"Invalid warped dimensions: {width_new}x{height_new}"
+                )
 
-            if width_new > width_orig * 10 or height_new > height_orig * 10:
+            if (
+                width_new > width_orig * _MAX_WARP_DISTORTION
+                or height_new > height_orig * _MAX_WARP_DISTORTION
+            ):
                 raise PreprocessingError(
                     f"Extreme distortion detected: {width_new}x{height_new} "
                     f"vs original {width_orig}x{height_orig}"

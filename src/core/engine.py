@@ -1,3 +1,4 @@
+
 """Core positioning engine for image matching and coordinate estimation.
 
 This module provides the PositioningEngine class which handles image
@@ -12,7 +13,9 @@ import numpy as np
 import pandas as pd
 
 from src.models.config import PositioningConfig
-from src.utils.helpers import PositioningError
+
+from src.utils.logger import get_logger
+_logger = get_logger(__name__)
 
 
 class PositioningEngine:
@@ -74,16 +77,22 @@ class PositioningEngine:
         processed = self.preprocessor(img_original, query_row.to_dict())
         shape = processed.shape
 
-        if processed.shape == img_original.shape and np.array_equal(processed, img_original):
+        if processed.shape == img_original.shape and np.array_equal(
+            processed, img_original
+        ):
             return query_path, shape
 
         if temp_dir:
-            name = f"{Path(query_path.name).stem}_processed{Path(query_path.name).suffix}"
+            name = (
+                f"{Path(query_path.name).stem}_processed{Path(query_path.name).suffix}"
+            )
             processed_path = temp_dir / name
             cv2.imwrite(str(processed_path), processed)
             return processed_path, shape
 
-        raise RuntimeError("Processed image cannot be matched without a temporary directory.")
+        raise RuntimeError(
+            "Processed image cannot be matched without a temporary directory."
+        )
 
     def match_query_to_map(
         self,
@@ -121,19 +130,24 @@ class PositioningEngine:
         match_results = self.pipeline.match(query_path, map_path)
         inliers_mask = match_results.get("inliers")
         num_inliers = np.sum(inliers_mask) if inliers_mask is not None else 0
-        
+
         ransac_successful = (
-            bool(match_results.get("success", False)) and int(num_inliers) >= min_inliers
+            bool(match_results.get("success", False))
+            and int(num_inliers) >= min_inliers
         )
 
         try:
             pos_res = self.compute_positioning(
-                ransac_successful, match_results.get("homography"), 
-                query_row, map_row, query_shape, map_img.shape
+                ransac_successful,
+                match_results.get("homography"),
+                query_row,
+                map_row,
+                query_shape,
+                map_img.shape,
             )
         except Exception as e:
             if self.config.matcher_params.get("verbose"):
-                print(f"    Tile positioning failed: {e}")
+                _logger.info(f"    Tile positioning failed: {e}")
             return None
 
         if save_viz and ransac_successful:
@@ -175,16 +189,22 @@ class PositioningEngine:
         Returns:
             Positioning result dictionary with success and error metadata.
         """
-        res = {"pred_lat": None, "pred_lon": None, "error_meters": float("inf"), "success": False}
-        
+        res = {
+            "pred_lat": None,
+            "pred_lon": None,
+            "error_meters": float("inf"),
+            "success": False,
+        }
+
         if not ransac_successful or homography is None:
             return res
 
         from typing import Callable
+
         calc_loc = cast(Callable, self.calculate_location_and_error)
         calc_gps = cast(Callable, self.calculate_predicted_gps)
         dist_fn = cast(Callable, self.haversine_distance)
-        
+
         if calc_loc is None or calc_gps is None or dist_fn is None:
             return res
 
@@ -199,7 +219,14 @@ class PositioningEngine:
 
         if plat is not None and glat is not None and glon is not None:
             err = dist_fn(float(glat), float(glon), float(plat), float(plon))
-            res.update({"pred_lat": plat, "pred_lon": plon, "error_meters": err, "success": True})
+            res.update(
+                {
+                    "pred_lat": plat,
+                    "pred_lon": plon,
+                    "error_meters": err,
+                    "success": True,
+                }
+            )
         return res
 
     def _save_viz(self, results_dir, q_path, m_path, match_results):
@@ -218,8 +245,13 @@ class PositioningEngine:
         if hasattr(self.pipeline, "visualize_matches"):
             try:
                 self.pipeline.visualize_matches(
-                    q_path, m_path, match_results["mkpts0"], match_results["mkpts1"],
-                    match_results["inliers"], out_path, homography=match_results.get("homography")
+                    q_path,
+                    m_path,
+                    match_results["mkpts0"],
+                    match_results["mkpts1"],
+                    match_results["inliers"],
+                    out_path,
+                    homography=match_results.get("homography"),
                 )
             except Exception as e:
-                print(f"  WARNING: Visualization failed: {e}")
+                _logger.info(f"  WARNING: Visualization failed: {e}")

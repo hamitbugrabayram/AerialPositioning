@@ -5,6 +5,7 @@ for all matching engines in the system. Contains shared functionality
 to eliminate code duplication across matcher implementations.
 """
 
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +15,8 @@ import cv2
 import numpy as np
 import torch
 
+from src.utils.logger import get_logger
+_logger = get_logger(__name__)
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 USE_GPU = torch.cuda.is_available()
@@ -50,23 +53,27 @@ class BaseMatcher(ABC):
     the `name` property and `match` method.
 
     Attributes:
-        config: Configuration dictionary for the matcher.
-        device: Compute device (cuda or cpu).
-        ransac_params: RANSAC algorithm parameters.
-        cv2_method: OpenCV RANSAC method constant.
+        config (Dict[str, Any]): Configuration dictionary for the matcher.
+        device (str): Compute device (cuda or cpu).
+        ransac_params (Dict[str, Any]): RANSAC algorithm parameters.
+        cv2_method (int): OpenCV RANSAC method constant.
+        ransac_method (str): Name of RANSAC method.
+        ransac_thresh (float): RANSAC reprojection threshold.
+        ransac_conf (float): RANSAC confidence level.
+        ransac_iter (int): Maximum RANSAC iterations.
     """
 
     def __init__(self, config: Dict[str, Any]):
         """Initializes the matcher with common RANSAC settings.
 
         Args:
-            config: Configuration dictionary containing matcher and
+            config (Dict[str, Any]): Configuration dictionary containing matcher and
                 RANSAC parameters.
         """
         self.config = config
         requested_device = str(config.get("device", "cuda")).lower()
         if requested_device.startswith("cuda") and not torch.cuda.is_available():
-            print("WARNING: CUDA requested but not available. Falling back to CPU.")
+            _logger.info("WARNING: CUDA requested but not available. Falling back to CPU.")
             self.device = "cpu"
         else:
             self.device = requested_device
@@ -94,11 +101,11 @@ class BaseMatcher(ABC):
         """Matches features between two images.
 
         Args:
-            image0_path: Path to the first image (query).
-            image1_path: Path to the second image (map).
+            image0_path (Union[str, Path]): Path to the first image (query).
+            image1_path (Union[str, Path]): Path to the second image (map).
 
         Returns:
-            Dictionary containing match results with keys:
+            Dict[str, Any]: Dictionary containing match results with keys:
                 - mkpts0: Matched keypoints in image 0
                 - mkpts1: Matched keypoints in image 1
                 - inliers: Boolean inlier mask
@@ -111,7 +118,7 @@ class BaseMatcher(ABC):
         """Creates a default empty result dictionary for failed matches.
 
         Returns:
-            Dictionary with empty arrays and failure status.
+            Dict[str, Any]: Dictionary with empty arrays and failure status.
         """
         return {
             "mkpts0": np.array([]),
@@ -132,9 +139,9 @@ class BaseMatcher(ABC):
         """Updates result dictionary with homography estimation results.
 
         Args:
-            results: Result dictionary to update in-place.
-            homography: Estimated homography matrix or None.
-            inlier_mask: Boolean mask of inlier matches.
+            results (Dict[str, Any]): Result dictionary to update in-place.
+            homography (Optional[np.ndarray]): Estimated homography matrix or None.
+            inlier_mask (np.ndarray): Boolean mask of inlier matches.
         """
         if homography is not None:
             results["homography"] = homography
@@ -147,11 +154,11 @@ class BaseMatcher(ABC):
         """Estimates the homography matrix using RANSAC.
 
         Args:
-            mkpts0: Keypoints in image 0 with shape (N, 2).
-            mkpts1: Keypoints in image 1 with shape (N, 2).
+            mkpts0 (np.ndarray): Keypoints in image 0 with shape (N, 2).
+            mkpts1 (np.ndarray): Keypoints in image 1 with shape (N, 2).
 
         Returns:
-            Tuple containing:
+            Tuple[Optional[np.ndarray], np.ndarray]: Tuple containing:
                 - 3x3 homography matrix or None if estimation failed
                 - Boolean inlier mask array
         """
@@ -192,22 +199,22 @@ class BaseMatcher(ABC):
         """Creates and saves a visualization of feature matches.
 
         Args:
-            image0_path: Path to the query image.
-            image1_path: Path to the map image.
-            mkpts0: Matched keypoints in query image with shape (N, 2).
-            mkpts1: Matched keypoints in map image with shape (N, 2).
-            inliers: Boolean mask indicating inlier matches.
-            output_path: Destination path for the visualization image.
-            title: Title for the visualization (unused, kept for API compatibility).
-            homography: Optional homography matrix to overlay on visualization.
+            image0_path (Union[str, Path]): Path to the query image.
+            image1_path (Union[str, Path]): Path to the map image.
+            mkpts0 (np.ndarray): Matched keypoints in query image with shape (N, 2).
+            mkpts1 (np.ndarray): Matched keypoints in map image with shape (N, 2).
+            inliers (np.ndarray): Boolean mask indicating inlier matches.
+            output_path (Union[str, Path]): Destination path for the visualization image.
+            title (str): Title for the visualization (unused, kept for API compatibility).
+            homography (Optional[np.ndarray]): Optional homography matrix to overlay on visualization.
 
         Returns:
-            True if visualization was saved successfully, False otherwise.
+            bool: True if visualization was saved successfully, False otherwise.
         """
         try:
             from src.utils.visualization import create_match_visualization
         except ImportError:
-            print("Visualization module unavailable.")
+            _logger.info("Visualization module unavailable.")
             return False
 
         num_inliers = int(np.sum(inliers)) if len(inliers) > 0 else 0
@@ -229,5 +236,5 @@ class BaseMatcher(ABC):
                 homography=homography,
             )
         except Exception as e:
-            print(f"ERROR during visualization: {e}")
+            _logger.info(f"ERROR during visualization: {e}")
             return False

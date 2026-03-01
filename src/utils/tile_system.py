@@ -7,6 +7,7 @@ Reference:
     https://msdn.microsoft.com/en-us/library/bb259689.aspx
 """
 
+
 import re
 from itertools import chain
 from math import atan, cos, exp, floor, log, pi, sin
@@ -17,6 +18,9 @@ import cv2
 import numpy as np
 
 from src.utils.providers import get_provider
+
+from src.utils.logger import get_logger
+_logger = get_logger(__name__)
 
 
 class TileSystem:
@@ -294,7 +298,9 @@ class TileSystem:
                                 image = cv2.resize(image, (256, 256))
                                 cv2.imwrite(str(file_path), image)
                     except Exception as e:
-                        print(f"CRITICAL: Failed to download tile {x},{y} at level {level}: {e}")
+                        print(
+                            f"CRITICAL: Failed to download tile {x},{y} at level {level}: {e}"
+                        )
                         raise
 
                 lat1, lon1, lat2, lon2 = TileSystem.get_tile_bounds(x, y, level)

@@ -1,32 +1,44 @@
 """Visual positioning and visualization module.
 
 This module handles the primary visual positioning pipeline, including
-displacement-based prediction and path visualization for GNSS-free
+adaptive search radius management and path visualization for GNSS-free
 coordinate estimation.
 """
 
 import time
 from pathlib import Path
-from typing import Any, List, Optional, Tuple, cast
+from typing import Any, List, Optional, cast
 
 import pandas as pd
 
 from src.core.runner import PositioningRunner
 from src.models.config import PositioningConfig, QueryResult
+from src.utils.logger import get_logger
 from src.utils.plotting import TrajectoryVisualizer
+
+_logger = get_logger(__name__)
+
+_logger = get_logger(__name__)
 
 
 class Evaluator(PositioningRunner):
-    """Orchestrates visual positioning with displacement prediction.
+    """Orchestrates visual positioning with adaptive search.
 
-    This class extends PositioningRunner to provide trajectory-based
-    evaluation with displacement prediction between sampled frames.
+    Uses an exponential backoff strategy for search radius management:
+    on successful match the radius cools down toward the initial value;
+    on failure the radius grows by a configurable factor, up to a hard
+    ceiling. The search center always tracks the last successfully
+    matched position.
 
     Attributes:
         full_query_df: Complete query dataframe with all frames.
         sampled_query_df: Subsampled query dataframe at fixed intervals.
         frames_dir: Directory for saving frame visualizations.
         sample_interval: Number of frames between positioning checkpoints.
+        initial_radius_m: Starting radius for adaptive search.
+        max_radius_m: Maximum allowed search radius.
+        growth_factor: Multiplier for radius upon match failure.
+        cooldown_factor: Decay factor for radius upon match success.
     """
 
     def __init__(self, config: PositioningConfig):
@@ -47,12 +59,13 @@ class Evaluator(PositioningRunner):
         )
         if self.sample_interval <= 0:
             self.sample_interval = 1
-        radius_levels = self.config.positioning_params.get(
-            "radius_levels", [1000.0, 2000.0, 3000.0]
-        )
-        self.radius_levels: List[float] = [float(x) for x in radius_levels]
-        if not self.radius_levels:
-            self.radius_levels = [1000.0, 2000.0, 3000.0]
+
+        search_conf = self.config.positioning_params.get("adaptive_search", {})
+        self.initial_radius_m = float(search_conf.get("initial_radius_m", 1000.0))
+        self.max_radius_m = float(search_conf.get("max_radius_m", 10000.0))
+        self.growth_factor = float(search_conf.get("growth_factor", 1.5))
+        self.cooldown_factor = float(search_conf.get("cooldown_factor", 0.5))
+
         self.visualizer = TrajectoryVisualizer(config)
 
     def run_trajectory(self) -> None:
@@ -68,6 +81,7 @@ class Evaluator(PositioningRunner):
 
         from src.core.engine import PositioningEngine
         from src.utils.statistics import ResultManager
+
         self.engine = PositioningEngine(self.config, self.pipeline, self.preprocessor)
         if self.output_dir is not None and self.assets_dir is not None:
             self.result_manager = ResultManager(self.output_dir, self.assets_dir)
@@ -100,26 +114,38 @@ class Evaluator(PositioningRunner):
             num_checkpoints = (
                 len(self.sampled_query_df) if self.sampled_query_df is not None else 0
             )
-            print(f"Checkpoints: {num_checkpoints} (Interval: {self.sample_interval})")
+            _logger.info(
+                f"Checkpoints: {num_checkpoints} (Interval: {self.sample_interval})"
+            )
 
         results = self._process_eval_queries()
         self._save_results(results)
         self._cleanup_temp_processed_queries()
         self.visualizer.generate_trajectory_plot(results)
-        print("\nPositioning Complete")
+        _logger.info("Positioning Complete")
 
     def _process_eval_queries(self) -> List[QueryResult]:
-        """Processes images with GT-based displacement prediction.
+        """Processes sampled frames using adaptive radius search.
+
+        The algorithm maintains a dynamic search radius that starts at
+        ``initial_radius_m``. After each frame:
+
+        * **Success** -- the radius decays toward ``initial_radius_m``
+          by the ``cooldown_factor``, and the search center snaps to the
+          matched position.
+        * **Failure** -- the radius is multiplied by ``growth_factor``
+          (capped at ``max_radius_m``), and the search center remains at
+          the last known position.
 
         Returns:
             List of sampled-frame query results.
         """
         results: List[QueryResult] = []
-        if self.sampled_query_df is None or self.full_query_df is None:
+        if self.sampled_query_df is None:
             return results
 
         temp_dir: Optional[Path] = None
-        if self.assets_dir and self.config.preprocessing.get("enabled", False):
+        if self.assets_dir:
             if self.config.preprocessing.get("save_processed", False):
                 temp_dir = self.assets_dir / "processed_queries"
             else:
@@ -134,45 +160,65 @@ class Evaluator(PositioningRunner):
 
         last_match_lat = float(self.sampled_query_df.iloc[0]["Latitude"])
         last_match_lon = float(self.sampled_query_df.iloc[0]["Longitude"])
+        current_radius = self.initial_radius_m
+        consecutive_failures = 0
 
         total_start = time.time()
         total_frames = len(self.sampled_query_df)
 
         for idx, query_row in self.sampled_query_df.iterrows():
             try:
-                filename = str(query_row["Filename"])
                 idx_int = int(cast(Any, idx))
 
-                if idx_int == 0:
-                    search_lat, search_lon = last_match_lat, last_match_lon
-                else:
-                    prev_filename = str(self.sampled_query_df.iloc[idx_int - 1]["Filename"])
-                    curr_gt = self.full_query_df[self.full_query_df["Filename"] == filename].iloc[0]
-                    prev_gt = self.full_query_df[self.full_query_df["Filename"] == prev_filename].iloc[0]
+                search_lat = last_match_lat
+                search_lon = last_match_lon
 
-                    d_lat = float(cast(Any, curr_gt)["Latitude"]) - float(cast(Any, prev_gt)["Latitude"])
-                    d_lon = float(cast(Any, curr_gt)["Longitude"]) - float(cast(Any, prev_gt)["Longitude"])
-
-                    search_lat = last_match_lat + d_lat
-                    search_lon = last_match_lon + d_lon
-
-                result, radius = self._try_match_with_increasing_radius(
-                    query_row, idx_int, temp_dir, min_inliers, save_viz, search_lat, search_lon
+                result = self._match_with_adaptive_radius(
+                    query_row,
+                    idx_int,
+                    temp_dir,
+                    min_inliers,
+                    save_viz,
+                    search_lat,
+                    search_lon,
+                    current_radius,
                 )
 
                 if result.success:
-                    last_match_lat = float(result.predicted_latitude) if result.predicted_latitude is not None else search_lat
-                    last_match_lon = float(result.predicted_longitude) if result.predicted_longitude is not None else search_lon
+                    last_match_lat = float(
+                        result.predicted_latitude
+                        if result.predicted_latitude is not None
+                        else search_lat
+                    )
+                    last_match_lon = float(
+                        result.predicted_longitude
+                        if result.predicted_longitude is not None
+                        else search_lon
+                    )
+                    excess = current_radius - self.initial_radius_m
+                    if excess > 0:
+                        current_radius = (
+                            self.initial_radius_m + excess * self.cooldown_factor
+                        )
+                    consecutive_failures = 0
                 else:
-                    last_match_lat, last_match_lon = search_lat, search_lon
-                    result.success = False
+                    last_match_lat = search_lat
+                    last_match_lon = search_lon
+                    current_radius = min(
+                        current_radius * self.growth_factor, self.max_radius_m
+                    )
+                    consecutive_failures += 1
 
                 results.append(result)
                 if self.save_frame_sequence:
                     self.visualizer.generate_trajectory_plot(results, frame_idx=idx_int)
 
                 success_count = sum(1 for r in results if r.success)
-                print(f"\rFrame: {idx_int+1}/{total_frames} | Radius: {radius}m | Success: {success_count}/{idx_int+1}", end="", flush=True)
+                _logger.info(
+                    f"Frame: {idx_int + 1}/{total_frames} | "
+                    f"Radius: {current_radius:.0f}m | "
+                    f"Success: {success_count}/{idx_int + 1}"
+                )
 
             except Exception as e:
                 results.append(
@@ -184,25 +230,22 @@ class Evaluator(PositioningRunner):
                 )
                 continue
 
-        print()
         total_time = time.time() - total_start
-        print(f"Total Processing Time: {total_time:.2f}s")
+        _logger.info(f"Total Processing Time: {total_time:.2f}s")
         return results
 
-    def _try_match_with_increasing_radius(
+    def _match_with_adaptive_radius(
         self,
         query_row: pd.Series,
         idx: int,
         temp_dir: Optional[Path],
         min_inliers: int,
         save_viz: bool,
-        ref_lat: float,
-        ref_lon: float,
-    ) -> Tuple[QueryResult, float]:
-        """Tries matching with progressively increasing search radius.
-
-        Attempts matching at 1000m, 2000m, and 3000m radii. If all fail,
-        returns a failed result.
+        search_lat: float,
+        search_lon: float,
+        radius: float,
+    ) -> QueryResult:
+        """Attempts to match a query image within the given adaptive radius.
 
         Args:
             query_row: Pandas Series containing query metadata.
@@ -210,60 +253,26 @@ class Evaluator(PositioningRunner):
             temp_dir: Optional directory for saving processed queries.
             min_inliers: Minimum inliers required for success.
             save_viz: Whether to save match visualizations.
-            ref_lat: Reference latitude for search window.
-            ref_lon: Reference longitude for search window.
+            search_lat: Search center latitude.
+            search_lon: Search center longitude.
+            radius: Current adaptive search radius in meters.
 
         Returns:
-            Tuple containing QueryResult and the radius used.
-        """
-        final_result = QueryResult(query_filename=str(query_row.get("Filename")), success=False)
-
-        for radius in self.radius_levels:
-            final_result = self._process_single_query_with_custom_radius(
-                query_row, idx, temp_dir, min_inliers, save_viz, ref_lat, ref_lon, radius
-            )
-            final_result.search_radius_m = radius
-            if final_result.success:
-                return final_result, radius
-
-        final_result.failure_reason = final_result.failure_reason or "all_radius_levels_failed"
-        return final_result, self.radius_levels[-1]
-
-    def _process_single_query_with_custom_radius(
-        self,
-        query_row: pd.Series,
-        idx: int,
-        temp_dir: Optional[Path],
-        min_inliers: int,
-        save_viz: bool,
-        ref_lat: float,
-        ref_lon: float,
-        radius: float,
-    ) -> QueryResult:
-        """Processes a single query with custom search radius.
-
-        Args:
-            query_row: Query metadata row.
-            idx: Query index in sampled sequence.
-            temp_dir: Optional directory for processed query images.
-            min_inliers: Minimum inlier threshold.
-            save_viz: Whether to save match visualizations.
-            ref_lat: Reference latitude for candidate filtering.
-            ref_lon: Reference longitude for candidate filtering.
-            radius: Search radius in meters.
-
-        Returns:
-            Per-query best match result.
+            QueryResult for this frame.
         """
         query_filename = str(query_row["Filename"])
         gt_lat = float(cast(Any, query_row).get("Latitude", 0.0))
         gt_lon = float(cast(Any, query_row).get("Longitude", 0.0))
+
         res = QueryResult(
             query_filename=query_filename,
             gt_latitude=gt_lat,
             gt_longitude=gt_lon,
+            search_center_latitude=search_lat,
+            search_center_longitude=search_lon,
             search_radius_m=radius,
         )
+
         q_path = Path(self.config.data_paths["query_dir"]) / query_filename
         if not q_path.is_file() or self.engine is None:
             res.failure_reason = "query_file_missing_or_engine_unavailable"
@@ -279,7 +288,9 @@ class Evaluator(PositioningRunner):
             res.failure_reason = "query_shape_or_metadata_unavailable"
             return res
 
-        rel_maps = self._filter_maps_by_custom_ref(ref_lat, ref_lon, self.map_df, radius)
+        rel_maps = self._filter_maps_by_reference(
+            search_lat, search_lon, self.map_df, radius
+        )
         res.candidate_maps = int(len(rel_maps))
         res_dir = self.output_dir / Path(query_filename).stem
 
@@ -287,36 +298,21 @@ class Evaluator(PositioningRunner):
             res.evaluated_maps += 1
             try:
                 m_res = self.engine.match_query_to_map(
-                    q_match, q_shape, query_row, m_row, res_dir, min_inliers, save_viz
+                    q_match,
+                    q_shape,
+                    query_row,
+                    m_row,
+                    res_dir,
+                    min_inliers,
+                    save_viz,
                 )
                 if m_res and self._is_better(m_res, res):
                     self._update(res, m_res)
             except Exception as e:
                 if self.config.matcher_params.get("verbose"):
-                    print(f"    Tile positioning failed: {e}")
+                    _logger.warning(f"Tile positioning failed: {e}")
                 continue
+
         if not res.success and not res.failure_reason:
             res.failure_reason = "no_valid_match_in_candidate_maps"
         return res
-
-    def _filter_maps_by_custom_ref(
-        self,
-        lat: float,
-        lon: float,
-        map_df: pd.DataFrame,
-        radius: float,
-    ) -> pd.DataFrame:
-        """Filters map tiles by distance from a reference point.
-
-        Args:
-            lat: Reference latitude.
-            lon: Reference longitude.
-            map_df: Map metadata dataframe.
-            radius: Search radius in meters.
-
-        Returns:
-            Filtered map metadata dataframe.
-        """
-        if self.engine is None:
-            return map_df
-        return self._filter_maps_by_reference(lat, lon, map_df, radius)
