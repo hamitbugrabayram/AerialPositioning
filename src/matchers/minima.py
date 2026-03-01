@@ -4,6 +4,7 @@ This module implements the MINIMA matcher supporting multiple methods:
 xoftr, sp_lg, loftr for cross-modal and multi-modal image matching.
 """
 
+
 import os
 import sys
 import time
@@ -14,6 +15,9 @@ from typing import Any, Dict, Union
 import numpy as np
 
 from .base import BaseMatcher
+
+from src.utils.logger import get_logger
+_logger = get_logger(__name__)
 
 _MINIMA_PATH = Path(__file__).resolve().parent.parent.parent / "matchers/MINIMA"
 
@@ -29,6 +33,7 @@ class MinimaPipeline(BaseMatcher):
     Attributes:
         method (str): Selected matching method.
         matcher (Any): The loaded MINIMA matcher callable.
+        minima_params (Dict[str, Any]): MINIMA specific configuration.
     """
 
     SUPPORTED_METHODS = ["xoftr", "sp_lg", "loftr"]
@@ -37,7 +42,7 @@ class MinimaPipeline(BaseMatcher):
         """Initializes the MINIMA pipeline with the chosen method.
 
         Args:
-            config: Configuration dictionary containing matcher parameters.
+            config (Dict[str, Any]): Configuration dictionary containing matcher parameters.
         """
         super().__init__(config)
 
@@ -64,7 +69,11 @@ class MinimaPipeline(BaseMatcher):
         self._load_matcher(method_args)
 
     def _load_matcher(self, args: Namespace) -> None:
-        """Loads the MINIMA matcher and handles internal path dependencies."""
+        """Loads the MINIMA matcher and handles internal path dependencies.
+
+        Args:
+            args (Namespace): Namespace arguments configured for the target method.
+        """
         original_dir = os.getcwd()
         original_path = sys.path.copy()
 
@@ -111,7 +120,15 @@ class MinimaPipeline(BaseMatcher):
     def _build_method_args(
         self, weights_config: Dict[str, Any], weights_dir: Path
     ) -> Namespace:
-        """Constructs the Namespace expected by MINIMA loading functions."""
+        """Constructs the Namespace expected by MINIMA loading functions.
+
+        Args:
+            weights_config (Dict[str, Any]): Weights configuration dictionary.
+            weights_dir (Path): Base path pointing to the weights directory.
+
+        Returns:
+            Namespace: Populated namespace with checkpoint paths and thresholds.
+        """
         args = Namespace()
 
         if self.method == "xoftr":
@@ -142,11 +159,11 @@ class MinimaPipeline(BaseMatcher):
         """Matches features between two images using the MINIMA engine.
 
         Args:
-            image0_path: Path to the query image.
-            image1_path: Path to the reference image.
+            image0_path (Union[str, Path]): Path to the query image.
+            image1_path (Union[str, Path]): Path to the reference image.
 
         Returns:
-            Dictionary containing match results.
+            Dict[str, Any]: Dictionary containing match results.
         """
         start_time = time.time()
         results = self._create_empty_result()
@@ -177,7 +194,7 @@ class MinimaPipeline(BaseMatcher):
             self._update_result_with_homography(results, homography, inlier_mask)
 
         except Exception as e:
-            print(f"ERROR during MINIMA matching: {e}")
+            _logger.info(f"ERROR during MINIMA matching: {e}")
 
         finally:
             results["time"] = time.time() - start_time

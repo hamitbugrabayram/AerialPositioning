@@ -4,6 +4,7 @@ This module provides a DatasetManager class to handle the organization,
 preparation, and configuration of drone and satellite imagery datasets.
 """
 
+
 import os
 import shutil
 from pathlib import Path
@@ -15,9 +16,22 @@ import yaml
 
 from src.utils.tile_system import TileSystem
 
+from src.utils.logger import get_logger
+_logger = get_logger(__name__)
+
 
 class DatasetManager:
-    """Manages central dataset storage and experiment configuration."""
+    """Manages central dataset storage and experiment configuration.
+
+    This class handles the organization, preparation, and configuration of drone
+    and satellite imagery datasets for aerial positioning experiments.
+
+    Attributes:
+        project_root (Path): Root directory of the project.
+        raw_root (Path): Path to the raw aerial positioning dataset.
+        central_root (Path): Path where processed datasets are stored.
+        base_config_path (Path): Path to the base template config.yaml.
+    """
 
     def __init__(
         self,
@@ -29,10 +43,10 @@ class DatasetManager:
         """Initializes the DatasetManager.
 
         Args:
-            project_root: Root directory of the project.
-            raw_dataset_root: Path to the raw aerial positioning dataset.
-            central_datasets_root: Path where processed datasets are stored.
-            base_config_path: Path to the base template config.yaml.
+            project_root (Path): Root directory of the project.
+            raw_dataset_root (Path): Path to the raw aerial positioning dataset.
+            central_datasets_root (Path): Path where processed datasets are stored.
+            base_config_path (Path): Path to the base template config.yaml.
         """
         self.project_root = project_root
         self.raw_root = raw_dataset_root
@@ -40,19 +54,36 @@ class DatasetManager:
         self.base_config_path = base_config_path
 
     def load_base_config(self) -> Optional[Dict[str, Any]]:
-        """Loads the base configuration template."""
+        """Loads the base configuration template.
+
+        Returns:
+            Optional[Dict[str, Any]]: The loaded configuration dictionary, or None
+            if the base configuration file does not exist.
+        """
         if not self.base_config_path.exists():
             return None
         with open(self.base_config_path, "r", encoding="utf-8") as f:
             return yaml.safe_load(f)
 
     def save_config(self, config: Dict[str, Any], path: Path) -> None:
-        """Saves a configuration dictionary to a YAML file."""
+        """Saves a configuration dictionary to a YAML file.
+
+        Args:
+            config (Dict[str, Any]): The configuration dictionary to save.
+            path (Path): The file path where the YAML will be saved.
+        """
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(config, f, default_flow_style=False)
 
     def get_region_name(self, index_str: str) -> str:
-        """Retrieves a sanitized region name from the dataset mapping."""
+        """Retrieves a sanitized region name from the dataset mapping.
+
+        Args:
+            index_str (str): The region index string (e.g., '01').
+
+        Returns:
+            str: The sanitized name of the region.
+        """
         csv_path = self.raw_root / "satellite_ coordinates_range.csv"
         region_name = f"Region_{index_str}"
 
@@ -66,7 +97,14 @@ class DatasetManager:
         return region_name.replace(" ", "_").replace("-", "_")
 
     def get_dataset_dir(self, index: int) -> Path:
-        """Returns the central dataset directory for a region."""
+        """Returns the central dataset directory for a region.
+
+        Args:
+            index (int): The integer index of the region.
+
+        Returns:
+            Path: The central dataset directory path for the given region index.
+        """
         region_id = f"{index:02d}"
         region_name = self.get_region_name(region_id)
         return self.central_root / f"{region_id}_{region_name}"
@@ -77,12 +115,12 @@ class DatasetManager:
         """Safely extracts a numeric value from a pandas row.
 
         Args:
-            row: Pandas Series row.
-            key: Column key to extract.
-            default: Default value if missing or NaN.
+            row (pd.Series): Pandas Series row.
+            key (str): Column key to extract.
+            default (float): Default value if missing or NaN.
 
         Returns:
-            Extracted float value.
+            float: Extracted float value.
         """
         val = row.get(key)
         if pd.api.types.is_scalar(val):
@@ -92,7 +130,14 @@ class DatasetManager:
         return float(default)
 
     def prepare_shared_dataset(self, index: int) -> Path:
-        """Ensures query images and base metadata are in the central datasets folder."""
+        """Ensures query images and base metadata are in the central datasets folder.
+
+        Args:
+            index (int): The integer index of the region to prepare.
+
+        Returns:
+            Path: The central dataset directory path for the prepared region.
+        """
         region_id = f"{index:02d}"
         dataset_dir = self.get_dataset_dir(index)
         query_dir = dataset_dir / "query"
@@ -103,7 +148,9 @@ class DatasetManager:
 
         if not (query_dir / "photo_metadata.csv").exists():
             os.makedirs(str(query_dir), exist_ok=True)
-            print(f"Initializing central dataset for Region {region_id} at {dataset_dir}")
+            print(
+                f"Initializing central dataset for Region {region_id} at {dataset_dir}"
+            )
 
             if drone_img_dir.exists():
                 for img in drone_img_dir.glob("*.[jJ][pP][gG]"):
@@ -122,7 +169,8 @@ class DatasetManager:
                             "Longitude": self._get_telemetry_value(row, "lon"),
                             "Altitude": self._get_telemetry_value(row, "height"),
                             "Gimball_Roll": self._get_telemetry_value(row, "Kappa"),
-                            "Gimball_Pitch": -90.0 + self._get_telemetry_value(row, "Omega"),
+                            "Gimball_Pitch": -90.0
+                            + self._get_telemetry_value(row, "Omega"),
                             "Gimball_Yaw": 0.0,
                             "Flight_Roll": 0.0,
                             "Flight_Pitch": 0.0,
@@ -143,7 +191,22 @@ class DatasetManager:
         map_dir: Path,
         provider_name: Optional[str] = None,
     ) -> Path:
-        """Generates a positioning config.yaml inside the results folder."""
+        """Generates a positioning config.yaml inside the results folder.
+
+        Args:
+            output_path (Path): Directory where the config will be saved.
+            query_dir (Path): Directory containing query images and metadata.
+            map_dir (Path): Directory containing map tiles and metadata.
+            provider_name (Optional[str], optional): Optional tile provider name.
+
+        Returns:
+            Path: The file path to the generated config.yaml.
+
+        Raises:
+            RuntimeError: If the base configuration cannot be found or sample images
+                cannot be read.
+            FileNotFoundError: If no query images are found for resolution detection.
+        """
         base_config = self.load_base_config()
         if base_config is None:
             raise RuntimeError("Base config not found")
@@ -165,7 +228,9 @@ class DatasetManager:
 
         sample_images = list(query_dir.glob("*.[jJ][pP][gG]"))
         if not sample_images:
-            raise FileNotFoundError(f"No images found in {query_dir} to detect resolution.")
+            raise FileNotFoundError(
+                f"No images found in {query_dir} to detect resolution."
+            )
 
         img = cv2.imread(str(sample_images[0]))
         if img is None:
@@ -191,7 +256,13 @@ class DatasetManager:
     def prepare_region_data(
         self, index: int, zoom_levels: List[int], provider_names: List[str]
     ) -> None:
-        """Prepares map tiles for a region across multiple zooms and providers."""
+        """Prepares map tiles for a region across multiple zooms and providers.
+
+        Args:
+            index (int): The integer index of the region.
+            zoom_levels (List[int]): List of zoom levels to download.
+            provider_names (List[str]): List of tile provider names to use.
+        """
         dataset_dir = self.prepare_shared_dataset(index)
         region_id = f"{index:02d}"
         query_dir = dataset_dir / "query"
@@ -230,6 +301,8 @@ class DatasetManager:
                     )
 
                     if tiles:
-                        pd.DataFrame(tiles).to_csv(str(map_dir / "map.csv"), index=False)
+                        pd.DataFrame(tiles).to_csv(
+                            str(map_dir / "map.csv"), index=False
+                        )
                 else:
-                    print(f"  Maps already exist: {map_dir}")
+                    _logger.info(f"  Maps already exist: {map_dir}")

@@ -49,15 +49,15 @@ def latlon_to_pixel(
     """Converts geographic coordinates to pixel coordinates within a map tile.
 
     Args:
-        lat: Latitude in degrees.
-        lon: Longitude in degrees.
-        map_metadata: Dictionary containing map corner coordinates.
+        lat (float): Latitude in degrees.
+        lon (float): Longitude in degrees.
+        map_metadata (Dict[str, Any]): Dictionary containing map corner coordinates.
             Required keys: 'Top_left_lat', 'Bottom_right_lat',
             'Bottom_right_long', 'Top_left_lon'
-        map_shape: Map image dimensions as (height, width).
+        map_shape (Tuple[int, int]): Map image dimensions as (height, width).
 
     Returns:
-        Pixel coordinates as numpy array [x, y], or None if coordinates
+        Optional[np.ndarray]: Pixel coordinates as numpy array [x, y], or None if coordinates
         are outside the map bounds (with 5% tolerance buffer).
 
     Raises:
@@ -116,13 +116,13 @@ def haversine_distance(
     the Earth's surface.
 
     Args:
-        lat1: Latitude of point 1 in degrees.
-        lon1: Longitude of point 1 in degrees.
-        lat2: Latitude of point 2 in degrees.
-        lon2: Longitude of point 2 in degrees.
+        lat1 (float): Latitude of point 1 in degrees.
+        lon1 (float): Longitude of point 1 in degrees.
+        lat2 (float): Latitude of point 2 in degrees.
+        lon2 (float): Longitude of point 2 in degrees.
 
     Returns:
-        Distance in meters.
+        float: Distance in meters.
 
     Raises:
         PositioningError: If the calculation fails due to invalid input.
@@ -154,12 +154,12 @@ def calculate_predicted_gps(
     Uses TileSystem for accurate Mercator projection when available.
 
     Args:
-        map_metadata: Dictionary containing map corner coordinates and Level.
-        normalized_center_xy: Normalized coordinates (0-1 range) as (x, y).
-        map_shape: Map image dimensions as (H, W, C) for Mercator calculation.
+        map_metadata (Dict[str, Any]): Dictionary containing map corner coordinates and Level.
+        normalized_center_xy (Optional[Tuple[float, float]]): Normalized coordinates (0-1 range) as (x, y).
+        map_shape (Optional[Tuple[int, ...]]): Map image dimensions as (H, W, C) for Mercator calculation.
 
     Returns:
-        Tuple of (predicted_lat, predicted_lon).
+        Tuple[float, float]: Tuple of (predicted_lat, predicted_lon).
 
     Raises:
         PositioningError: If GPS calculation fails or inputs are invalid.
@@ -203,12 +203,12 @@ def _calculate_gps_mercator(
     Uses TileSystem for accurate coordinate conversion.
 
     Args:
-        map_metadata: Dictionary with 'Top_left_lat', 'Top_left_lon', 'Level'.
-        normalized_center_xy: Normalized (x, y) in range [0, 1].
-        map_shape: Map image dimensions as (H, W, C).
+        map_metadata (Dict[str, Any]): Dictionary with 'Top_left_lat', 'Top_left_lon', 'Level'.
+        normalized_center_xy (Tuple[float, float]): Normalized (x, y) in range [0, 1].
+        map_shape (Tuple[int, ...]): Map image dimensions as (H, W, C).
 
     Returns:
-        Tuple of (latitude, longitude) in degrees.
+        Tuple[float, float]: Tuple of (latitude, longitude) in degrees.
 
     Raises:
         PositioningError: If TileSystem calculation fails.
@@ -245,11 +245,11 @@ def is_stable_homography(
     """Checks if a homography is physically plausible for this application.
 
     Args:
-        H: 3x3 homography matrix, or None.
-        query_shape: (height, width) of the query image.
+        H (Optional[np.ndarray]): 3x3 homography matrix, or None.
+        query_shape (Tuple[int, int]): (height, width) of the query image.
 
     Returns:
-        True if plausible, False otherwise.
+        bool: True if plausible, False otherwise.
     """
     if H is None or H.shape != (3, 3):
         return False
@@ -292,14 +292,14 @@ def calculate_location_and_error(
     the corresponding location in the map tile.
 
     Args:
-        query_metadata: Query image metadata dictionary.
-        map_metadata: Map image metadata dictionary.
-        query_shape: Query image dimensions as (H, W, C).
-        map_shape: Map image dimensions as (H, W, C).
-        homography: 3x3 homography matrix (Query -> Map), or None.
+        query_metadata (Dict[str, Any]): Query image metadata dictionary.
+        map_metadata (Dict[str, Any]): Map image metadata dictionary.
+        query_shape (Tuple[int, ...]): Query image dimensions as (H, W, C).
+        map_shape (Tuple[int, ...]): Map image dimensions as (H, W, C).
+        homography (Optional[np.ndarray]): 3x3 homography matrix (Query -> Map), or None.
 
     Returns:
-        Normalized center coordinates (x, y) in range [0, 1], or None on error.
+        Optional[Tuple[float, float]]: Normalized center coordinates (x, y) in range [0, 1], or None on error.
 
     Raises:
         PositioningError: If the homography is unstable or transformation fails.
@@ -313,7 +313,9 @@ def calculate_location_and_error(
     query_center = np.array([[[w_q / 2.0, h_q / 2.0]]], dtype=np.float32)
 
     try:
-        predicted_location = cv2.perspectiveTransform(query_center, cast(np.ndarray, homography))
+        predicted_location = cv2.perspectiveTransform(
+            query_center, cast(np.ndarray, homography)
+        )
         if predicted_location is None:
             raise PositioningError(
                 "Failed to transform query center to map coordinates."

@@ -4,6 +4,7 @@ This module implements the LightGlue matcher with SuperPoint or DISK
 feature extraction for image matching and positioning.
 """
 
+
 import sys
 import time
 from pathlib import Path
@@ -12,6 +13,9 @@ from typing import Any, Dict, Optional, Union
 import torch
 
 from .base import BaseMatcher
+
+from src.utils.logger import get_logger
+_logger = get_logger(__name__)
 
 _LIGHTGLUE_PATH = Path(__file__).parent.parent.parent / "matchers/LightGlue"
 if str(_LIGHTGLUE_PATH) not in sys.path:
@@ -41,7 +45,7 @@ class LightGluePipeline(BaseMatcher):
         """Initializes the LightGlue pipeline with configured extractors.
 
         Args:
-            config: Configuration dictionary containing matcher parameters.
+            config (Dict[str, Any]): Configuration dictionary containing matcher parameters.
         """
         super().__init__(config)
         self._device = torch.device(self.device)
@@ -75,12 +79,19 @@ class LightGluePipeline(BaseMatcher):
         return f"LightGlue ({self._feature_type})"
 
     def _preprocess_image(self, image_path: Path) -> Optional[torch.Tensor]:
-        """Loads and prepares an image for extraction."""
+        """Loads and prepares an image for extraction.
+
+        Args:
+            image_path (Path): Path to the image file.
+
+        Returns:
+            Optional[torch.Tensor]: Loaded image tensor, or None if failed.
+        """
         try:
             image = load_image(image_path)
             return image.to(self._device)
         except Exception as e:
-            print(f"Error loading image {image_path.name}: {e}")
+            _logger.info(f"Error loading image {image_path.name}: {e}")
             return None
 
     def match(
@@ -89,11 +100,11 @@ class LightGluePipeline(BaseMatcher):
         """Matches features between query and reference images.
 
         Args:
-            image0_path: Path to the query image.
-            image1_path: Path to the satellite map tile.
+            image0_path (Union[str, Path]): Path to the query image.
+            image1_path (Union[str, Path]): Path to the satellite map tile.
 
         Returns:
-            Dictionary containing match results.
+            Dict[str, Any]: Dictionary containing match results.
         """
         start_time = time.time()
         results = self._create_empty_result()
@@ -126,7 +137,7 @@ class LightGluePipeline(BaseMatcher):
             self._update_result_with_homography(results, homography, inlier_mask)
 
         except Exception as e:
-            print(f"ERROR during LightGlue matching: {e}")
+            _logger.info(f"ERROR during LightGlue matching: {e}")
 
         finally:
             results["time"] = time.time() - start_time

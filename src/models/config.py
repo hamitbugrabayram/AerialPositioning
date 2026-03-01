@@ -26,6 +26,12 @@ class QueryResult:
         predicted_longitude: Predicted longitude from positioning.
         error_meters: Positioning error in meters.
         success: Whether positioning was successful.
+        search_radius_m: Search radius in meters.
+        candidate_maps: Number of maps in search radius.
+        evaluated_maps: Number of maps evaluated.
+        search_center_latitude: Center latitude of search.
+        search_center_longitude: Center longitude of search.
+        failure_reason: Reason for failure, if any.
     """
 
     query_filename: str
@@ -42,6 +48,8 @@ class QueryResult:
     search_radius_m: Optional[float] = None
     candidate_maps: int = 0
     evaluated_maps: int = 0
+    search_center_latitude: Optional[float] = None
+    search_center_longitude: Optional[float] = None
     failure_reason: Optional[str] = None
 
 

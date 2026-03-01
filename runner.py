@@ -6,6 +6,7 @@ This script manages the end-to-end pipeline:
 3. "eval-summary": Generate summary report.
 """
 
+
 import argparse
 import subprocess
 import sys
@@ -16,22 +17,25 @@ from typing import List, Optional
 from src.utils.dataset_manager import DatasetManager
 from src.utils.reporting import ReportGenerator
 
+from src.utils.logger import get_logger
+_logger = get_logger(__name__)
 
-class ExperimentRunner:
+
+class Runner:
     """Orchestrates satellite-aided UAV visual positioning experiments.
 
     Attributes:
-        project_root: Absolute path to the project root directory.
-        raw_dataset_root: Path to the raw UAV-VisLoc dataset.
-        central_datasets_root: Path to the processed central datasets.
-        results_root: Path to store experiment results.
-        base_config_path: Path to the base configuration YAML file.
-        dataset_manager: Manager for dataset-related operations.
-        report_generator: Generator for summary reports and visualizations.
+        project_root (Path): Absolute path to the project root directory.
+        raw_dataset_root (Path): Path to the raw UAV-VisLoc dataset.
+        central_datasets_root (Path): Path to the processed central datasets.
+        results_root (Path): Path to store experiment results.
+        base_config_path (Path): Path to the base configuration YAML file.
+        dataset_manager (DatasetManager): Manager for dataset-related operations.
+        report_generator (ReportGenerator): Generator for summary reports and visualizations.
     """
 
-    def __init__(self):
-        """Initializes the ExperimentRunner with project paths and managers."""
+    def __init__(self) -> None:
+        """Initializes the Runner with project paths and managers."""
         self.project_root = Path(__file__).resolve().parent
         self.raw_dataset_root = self.project_root / "_VisLoc_dataset"
         self.central_datasets_root = self.project_root / "datasets"
@@ -50,10 +54,10 @@ class ExperimentRunner:
         """Parses region ID arguments into a list of integers.
 
         Args:
-            args_input: List of string inputs from argparse.
+            args_input (Optional[List[str]]): List of string inputs from argparse.
 
         Returns:
-            List of integer region IDs or None if input is None.
+            Optional[List[int]]: List of integer region IDs or None if input is None.
         """
         if args_input is None:
             return None
@@ -65,9 +69,9 @@ class ExperimentRunner:
         """Runs primary visual positioning for a specific region, zoom, and provider.
 
         Args:
-            index: Region index.
-            zoom: Zoom level for satellite tiles.
-            provider: Satellite tile provider (e.g., "esri", "google").
+            index (int): Region index.
+            zoom (int): Zoom level for satellite tiles.
+            provider (str): Satellite tile provider (e.g., "esri", "google").
 
         Raises:
             RuntimeError: If the positioning process fails.
@@ -82,7 +86,7 @@ class ExperimentRunner:
         map_dir = dataset_dir / "map" / provider / str(zoom)
 
         if not map_dir.exists():
-            print(f"\nERROR: Map directory not found: {map_dir}")
+            _logger.info(f"\nERROR: Map directory not found: {map_dir}")
             print(
                 f"HINT: Run '--dataset-prepare {index} --zoom-levels {zoom} "
                 f"--tile-provider {provider}' first."
@@ -97,25 +101,34 @@ class ExperimentRunner:
                 output_path, query_dir, map_dir, provider
             )
         except Exception as e:
-            print(f"\nERROR: Failed to generate configuration for {exp_folder_name}: {e}")
+            print(
+                f"\nERROR: Failed to generate configuration for {exp_folder_name}: {e}"
+            )
             sys.exit(1)
 
-        print(f"Running: {exp_folder_name}")
+        _logger.info(f"Running: {exp_folder_name}")
 
         cmd = [
-            sys.executable, "-m", "src.position",
-            "--config", str(config_path),
+            sys.executable,
+            "-m",
+            "src.position",
+            "--config",
+            str(config_path),
             "--eval",
         ]
 
         try:
             subprocess.run(cmd, check=True)
         except subprocess.CalledProcessError as e:
-            print(f"\nERROR: Visual Positioning process failed for {exp_folder_name}")
-            print(f"Details: Command '{' '.join(cmd)}' returned exit status {e.returncode}")
+            _logger.info(f"\nERROR: Visual Positioning process failed for {exp_folder_name}")
+            print(
+                f"Details: Command '{' '.join(cmd)}' returned exit status {e.returncode}"
+            )
             sys.exit(1)
         except Exception as e:
-            print(f"\nERROR: An unexpected error occurred while starting the process: {e}")
+            print(
+                f"\nERROR: An unexpected error occurred while starting the process: {e}"
+            )
             sys.exit(1)
 
     def main(self) -> None:
@@ -165,21 +178,25 @@ class ExperimentRunner:
 
         if prep_ids or eval_ids:
             if not args.zoom_levels:
-                print("ERROR: --zoom-levels is mandatory for preparation and evaluation.")
+                print(
+                    "ERROR: --zoom-levels is mandatory for preparation and evaluation."
+                )
                 sys.exit(1)
             if not args.tile_provider:
-                print("ERROR: --tile-provider is mandatory for preparation and evaluation.")
+                print(
+                    "ERROR: --tile-provider is mandatory for preparation and evaluation."
+                )
                 sys.exit(1)
 
         if prep_ids:
             for i in prep_ids:
-                print(f"Preparing Region {i}")
+                _logger.info(f"Preparing Region {i}")
                 try:
                     self.dataset_manager.prepare_region_data(
                         i, args.zoom_levels, args.tile_provider
                     )
                 except Exception as e:
-                    print(f"Error during preparation for Region {i}: {e}")
+                    _logger.info(f"Error during preparation for Region {i}: {e}")
                     sys.exit(1)
 
         if eval_ids:
@@ -192,21 +209,23 @@ class ExperimentRunner:
             try:
                 self.report_generator.generate_summary(summary_ids)
             except Exception as e:
-                print(f"Error: Summary failed: {e}")
+                _logger.info(f"Error: Summary failed: {e}")
                 sys.exit(1)
 
-        if not any([args.dataset_prepare, args.dataset_eval, args.eval_summary is not None]):
+        if not any(
+            [args.dataset_prepare, args.dataset_eval, args.eval_summary is not None]
+        ):
             parser.print_help()
 
 
 if __name__ == "__main__":
     try:
-        runner = ExperimentRunner()
+        runner = Runner()
         runner.main()
     except KeyboardInterrupt:
-        print("\n\nExecution interrupted by user. Exiting...")
+        _logger.info("\n\nExecution interrupted by user. Exiting...")
         sys.exit(1)
     except Exception as e:
-        print(f"\n\nCRITICAL UNHANDLED ERROR: {e}")
+        _logger.info(f"\n\nCRITICAL UNHANDLED ERROR: {e}")
         traceback.print_exc()
         sys.exit(1)

@@ -4,6 +4,7 @@ This module provides the TrajectoryVisualizer class for generating
 trajectory plots, map overlays, and error distributions.
 """
 
+
 from pathlib import Path
 from typing import Any, List, Optional, Tuple, cast
 
@@ -15,12 +16,28 @@ import pandas as pd
 from src.models.config import PositioningConfig, QueryResult
 from src.utils.tile_system import TileSystem
 
+from src.utils.logger import get_logger
+_logger = get_logger(__name__)
+
 
 class TrajectoryVisualizer:
-    """Handles trajectory visualization for the positioning system."""
+    """Handles trajectory visualization for the positioning system.
 
-    def __init__(self, config: PositioningConfig):
-        """Initializes the visualizer with configuration."""
+    Attributes:
+        config (PositioningConfig): The positioning configuration.
+        map_df (Optional[pd.DataFrame]): Map tile metadata dataframe.
+        full_query_df (Optional[pd.DataFrame]): Complete query metadata dataframe.
+        output_dir (Optional[Path]): Root experiment output directory.
+        frames_dir (Optional[Path]): Directory for saving frame plots.
+        assets_dir (Optional[Path]): Directory for saving summary plots.
+    """
+
+    def __init__(self, config: PositioningConfig) -> None:
+        """Initializes the visualizer with configuration.
+
+        Args:
+            config: The positioning configuration.
+        """
         self.config = config
         self.map_df: Optional[pd.DataFrame] = None
         self.full_query_df: Optional[pd.DataFrame] = None
@@ -74,7 +91,7 @@ class TrajectoryVisualizer:
             self.save_static_plot(results, frame_idx)
             self.save_map_overlay(results, frame_idx)
         except Exception as e:
-            print(f"  WARNING: Plot generation failed: {e}")
+            _logger.info(f"  WARNING: Plot generation failed: {e}")
 
     def save_static_plot(
         self,
@@ -95,14 +112,29 @@ class TrajectoryVisualizer:
             self._plot_gt_path(results, frame_idx)
 
         if len(pred_lats) > 1:
-            plt.plot(pred_lons, pred_lats, color="#0066FF", linewidth=3,
-                     label="Pred Path", alpha=0.8, zorder=2)
+            plt.plot(
+                pred_lons,
+                pred_lats,
+                color="#0066FF",
+                linewidth=3,
+                label="Pred Path",
+                alpha=0.8,
+                zorder=2,
+            )
 
         self._plot_error_lines(results)
 
         if pred_lats:
-            plt.scatter(pred_lons, pred_lats, c="#0066FF", s=40,
-                        edgecolors="white", linewidths=1, label="Estimated", zorder=5)
+            plt.scatter(
+                pred_lons,
+                pred_lats,
+                c="#0066FF",
+                s=40,
+                edgecolors="white",
+                linewidths=1,
+                label="Estimated",
+                zorder=5,
+            )
 
         self._plot_failed_markers(results)
 
@@ -115,54 +147,99 @@ class TrajectoryVisualizer:
 
         self._finalize_static_plot(frame_idx)
 
-    def _extract_predicted_path(self, results: List[QueryResult]) -> Tuple[List[float], List[float]]:
+    def _extract_predicted_path(
+        self, results: List[QueryResult]
+    ) -> Tuple[List[float], List[float]]:
         """Extracts successful predicted coordinates from results."""
         lats, lons = [], []
         for r in results:
-            if r.success and r.predicted_latitude is not None and r.predicted_longitude is not None:
+            if (
+                r.success
+                and r.predicted_latitude is not None
+                and r.predicted_longitude is not None
+            ):
                 lats.append(float(r.predicted_latitude))
                 lons.append(float(r.predicted_longitude))
         return lats, lons
 
-    def _plot_gt_path(self, results: List[QueryResult], frame_idx: Optional[int]) -> None:
+    def _plot_gt_path(
+        self, results: List[QueryResult], frame_idx: Optional[int]
+    ) -> None:
         """Plots the ground truth path on the current figure."""
         if self.full_query_df is None:
             return
         if frame_idx is not None:
             current_filename = results[-1].query_filename
-            indices = self.full_query_df[self.full_query_df["Filename"] == current_filename].index
+            indices = self.full_query_df[
+                self.full_query_df["Filename"] == current_filename
+            ].index
             if not indices.empty:
                 progress_end_idx = int(cast(Any, indices[0]))
                 gt_slice = self.full_query_df.iloc[: progress_end_idx + 1]
-                plt.plot(gt_slice["Longitude"], gt_slice["Latitude"], color="#FFA500",
-                         linewidth=4, label="GT Path", alpha=0.8, zorder=1)
+                plt.plot(
+                    gt_slice["Longitude"],
+                    gt_slice["Latitude"],
+                    color="#FFA500",
+                    linewidth=4,
+                    label="GT Path",
+                    alpha=0.8,
+                    zorder=1,
+                )
         else:
-            plt.plot(self.full_query_df["Longitude"], self.full_query_df["Latitude"],
-                     color="#FFA500", linewidth=4, label="Full GT Path", alpha=0.8, zorder=1)
+            plt.plot(
+                self.full_query_df["Longitude"],
+                self.full_query_df["Latitude"],
+                color="#FFA500",
+                linewidth=4,
+                label="Full GT Path",
+                alpha=0.8,
+                zorder=1,
+            )
 
     def _plot_error_lines(self, results: List[QueryResult]) -> None:
         """Plots error lines between GT and predicted positions."""
         drawn = False
         for r in results:
-            if (r.success and r.predicted_latitude is not None and 
-                r.predicted_longitude is not None and r.gt_latitude is not None and 
-                r.gt_longitude is not None):
-                plt.plot([r.gt_longitude, r.predicted_longitude],
-                         [r.gt_latitude, r.predicted_latitude],
-                         color="red", linewidth=1.5, alpha=0.6, zorder=3,
-                         label="Error" if not drawn else None)
+            if (
+                r.success
+                and r.predicted_latitude is not None
+                and r.predicted_longitude is not None
+                and r.gt_latitude is not None
+                and r.gt_longitude is not None
+            ):
+                plt.plot(
+                    [r.gt_longitude, r.predicted_longitude],
+                    [r.gt_latitude, r.predicted_latitude],
+                    color="red",
+                    linewidth=1.5,
+                    alpha=0.6,
+                    zorder=3,
+                    label="Error" if not drawn else None,
+                )
                 drawn = True
 
     def _plot_failed_markers(self, results: List[QueryResult]) -> None:
         """Plots markers for failed positioning attempts."""
         lats, lons = [], []
         for r in results:
-            if not r.success and r.gt_latitude is not None and r.gt_longitude is not None:
+            if (
+                not r.success
+                and r.gt_latitude is not None
+                and r.gt_longitude is not None
+            ):
                 lats.append(float(r.gt_latitude))
                 lons.append(float(r.gt_longitude))
         if lats:
-            plt.scatter(lons, lats, c="red", s=60, marker="x",
-                        linewidths=1.5, label="Failed", zorder=4)
+            plt.scatter(
+                lons,
+                lats,
+                c="red",
+                s=60,
+                marker="x",
+                linewidths=1.5,
+                label="Failed",
+                zorder=4,
+            )
 
     def _finalize_static_plot(self, frame_idx: Optional[int]) -> None:
         """Saves and closes the current static plot."""
@@ -193,9 +270,11 @@ class TrajectoryVisualizer:
 
             self._save_overlay_canvas(canvas, frame_idx)
         except Exception as e:
-            print(f"WARNING: Overlay failed: {e}")
+            _logger.info(f"WARNING: Overlay failed: {e}")
 
-    def _prepare_map_canvas(self) -> Tuple[Optional[np.ndarray], float, Tuple[int, int], int]:
+    def _prepare_map_canvas(
+        self,
+    ) -> Tuple[Optional[np.ndarray], float, Tuple[int, int], int]:
         """Creates the base map canvas from satellite tiles."""
         if self.map_df is None:
             return None, 0.0, (0, 0), 0
@@ -206,7 +285,11 @@ class TrajectoryVisualizer:
         level = int(cast(Any, self.map_df.iloc[0])["Level"])
 
         full_w, full_h = (max_tx - min_tx + 1) * 256, (max_ty - min_ty + 1) * 256
-        scale = min(1.0, 4096 / float(max(full_w, full_h))) if max(full_w, full_h) > 0 else 1.0
+        scale = (
+            min(1.0, 4096 / float(max(full_w, full_h)))
+            if max(full_w, full_h) > 0
+            else 1.0
+        )
         tw, th = int(full_w * scale), int(full_h * scale)
 
         canvas = np.zeros((th, tw, 3), dtype=np.uint8)
@@ -218,60 +301,159 @@ class TrajectoryVisualizer:
                 continue
             tx, ty = int(m_row["TileX"]), int(m_row["TileY"])
             x1, y1 = int((tx - min_tx) * 256 * scale), int((ty - min_ty) * 256 * scale)
-            x2, y2 = int((tx - min_tx + 1) * 256 * scale), int((ty - min_ty + 1) * 256 * scale)
+            x2, y2 = (
+                int((tx - min_tx + 1) * 256 * scale),
+                int((ty - min_ty + 1) * 256 * scale),
+            )
             if x2 - x1 > 0 and y2 - y1 > 0:
                 tile_res = cv2.resize(tile_img, (x2 - x1, y2 - y1))
                 h_fit, w_fit = min(y2 - y1, th - y1), min(x2 - x1, tw - x1)
-                canvas[y1:y1 + h_fit, x1:x1 + w_fit] = tile_res[:h_fit, :w_fit]
+                canvas[y1 : y1 + h_fit, x1 : x1 + w_fit] = tile_res[:h_fit, :w_fit]
 
         origin = TileSystem.tile_xy_to_pixel_xy(min_tx, min_ty)
         return canvas, scale, origin, level
 
-    def _get_px(self, lat: float, lon: float, scale: float, origin: Tuple[int, int], level: int) -> Tuple[int, int]:
-        """Converts lat/lon to canvas pixel coordinates."""
+    def _get_px(
+        self, lat: float, lon: float, scale: float, origin: Tuple[int, int], level: int
+    ) -> Tuple[int, int]:
+        """Converts lat/lon to canvas pixel coordinates.
+
+        Args:
+            lat (float): Latitude.
+            lon (float): Longitude.
+            scale (float): Map scale factor.
+            origin (Tuple[int, int]): Origin pixel coordinates of the map.
+            level (int): Map zoom level.
+
+        Returns:
+            Tuple[int, int]: The pixel coordinates (x, y) on the canvas.
+        """
         px, py = TileSystem.latlong_to_pixel_xy(float(lat), float(lon), level)
         return int((px - origin[0]) * scale), int((py - origin[1]) * scale)
 
-    def _draw_gt_overlay(self, canvas, results, frame_idx, scale, origin, level):
-        """Draws ground truth path on the overlay."""
+    def _draw_gt_overlay(
+        self,
+        canvas: np.ndarray,
+        results: List[QueryResult],
+        frame_idx: Optional[int],
+        scale: float,
+        origin: Tuple[int, int],
+        level: int,
+    ) -> None:
+        """Draws ground truth path on the overlay.
+
+        Args:
+            canvas (np.ndarray): The map canvas image array.
+            results (List[QueryResult]): The list of query results.
+            frame_idx (Optional[int]): Current frame index.
+            scale (float): Map scale.
+            origin (Tuple[int, int]): Origin pixel.
+            level (int): Zoom level.
+        """
         if self.full_query_df is None:
             return
         df = self.full_query_df
         if frame_idx is not None:
             indices = df[df["Filename"] == results[-1].query_filename].index
             if not indices.empty:
-                df = df.iloc[: int(indices[0]) + 1]
+                df = df.iloc[: int(cast(Any, indices[0])) + 1]
 
         pts = []
         for i in range(len(df)):
-            pts.append(self._get_px(float(df.iloc[i]["Latitude"]), float(df.iloc[i]["Longitude"]), scale, origin, level))
+            pts.append(
+                self._get_px(
+                    float(df.iloc[i]["Latitude"]),
+                    float(df.iloc[i]["Longitude"]),
+                    scale,
+                    origin,
+                    level,
+                )
+            )
         for i in range(len(pts) - 1):
             cv2.line(canvas, pts[i], pts[i + 1], (0, 0, 0), 12)
             cv2.line(canvas, pts[i], pts[i + 1], (0, 165, 255), 7)
 
-    def _draw_pred_overlay(self, canvas, results, scale, origin, level):
-        """Draws predicted path on the overlay."""
+    def _draw_pred_overlay(
+        self,
+        canvas: np.ndarray,
+        results: List[QueryResult],
+        scale: float,
+        origin: Tuple[int, int],
+        level: int,
+    ) -> None:
+        """Draws predicted path on the overlay.
+
+        Args:
+            canvas (np.ndarray): The map canvas image array.
+            results (List[QueryResult]): The list of query results.
+            scale (float): Map scale.
+            origin (Tuple[int, int]): Origin pixel.
+            level (int): Zoom level.
+        """
         pts = []
         for r in results:
-            if r.success and r.predicted_latitude is not None and r.predicted_longitude is not None:
-                pts.append(self._get_px(float(r.predicted_latitude), float(r.predicted_longitude), scale, origin, level))
+            if (
+                r.success
+                and r.predicted_latitude is not None
+                and r.predicted_longitude is not None
+            ):
+                pts.append(
+                    self._get_px(
+                        float(r.predicted_latitude),
+                        float(r.predicted_longitude),
+                        scale,
+                        origin,
+                        level,
+                    )
+                )
         for i in range(len(pts) - 1):
             cv2.line(canvas, pts[i], pts[i + 1], (0, 0, 0), 10)
             cv2.line(canvas, pts[i], pts[i + 1], (255, 0, 0), 5)
 
-    def _draw_markers_and_errors(self, canvas, results, scale, origin, level):
-        """Draws markers and error lines on the overlay."""
-        error_color = (0, 0, 255)   # Red.
-        failed_color = (0, 0, 255)  # Red.
+    def _draw_markers_and_errors(
+        self,
+        canvas: np.ndarray,
+        results: List[QueryResult],
+        scale: float,
+        origin: Tuple[int, int],
+        level: int,
+    ) -> None:
+        """Draws markers and error lines on the overlay.
+
+        Args:
+            canvas (np.ndarray): The map canvas image array.
+            results (List[QueryResult]): The list of query results.
+            scale (float): Map scale.
+            origin (Tuple[int, int]): Origin pixel.
+            level (int): Zoom level.
+        """
+        error_color = (0, 0, 255)
+        failed_color = (0, 0, 255)
         for r in results:
             if r.gt_latitude is None or r.gt_longitude is None:
                 continue
-            p_gt = self._get_px(float(r.gt_latitude), float(r.gt_longitude), scale, origin, level)
-            if not r.success or r.predicted_latitude is None or r.predicted_longitude is None:
-                cv2.drawMarker(canvas, p_gt, (255, 255, 255), cv2.MARKER_TILTED_CROSS, 28, 7)
-                cv2.drawMarker(canvas, p_gt, failed_color, cv2.MARKER_TILTED_CROSS, 24, 5)
+            p_gt = self._get_px(
+                float(r.gt_latitude), float(r.gt_longitude), scale, origin, level
+            )
+            if (
+                not r.success
+                or r.predicted_latitude is None
+                or r.predicted_longitude is None
+            ):
+                cv2.drawMarker(
+                    canvas, p_gt, (255, 255, 255), cv2.MARKER_TILTED_CROSS, 28, 7
+                )
+                cv2.drawMarker(
+                    canvas, p_gt, failed_color, cv2.MARKER_TILTED_CROSS, 24, 5
+                )
                 continue
-            p_pred = self._get_px(float(r.predicted_latitude), float(r.predicted_longitude), scale, origin, level)
+            p_pred = self._get_px(
+                float(r.predicted_latitude),
+                float(r.predicted_longitude),
+                scale,
+                origin,
+                level,
+            )
             cv2.line(canvas, p_pred, p_gt, (255, 255, 255), 7)
             cv2.line(canvas, p_pred, p_gt, error_color, 4)
             cv2.circle(canvas, p_pred, 18, (255, 255, 255), -1)
@@ -286,17 +468,51 @@ class TrajectoryVisualizer:
             ("Ground Truth Path", (0, 165, 255)),
             ("Predicted Path", (255, 0, 0)),
             ("Error Line", (0, 0, 255)),
-            ("Failed Match (X)", (0, 0, 255))
+            ("Failed Match (X)", (0, 0, 255)),
         ]
         for i, (text, color) in enumerate(texts):
-            self._draw_text(canvas, text, (40, 100 + i * 90), 2.5 if i == 0 else 1.8, color, 6 if i == 0 else 4)
+            self._draw_text(
+                canvas,
+                text,
+                (40, 100 + i * 90),
+                2.5 if i == 0 else 1.8,
+                color,
+                6 if i == 0 else 4,
+            )
 
-    def _draw_text(self, img, text, pos, scale, color, thickness):
-        """Draws text with shadow for better visibility."""
-        cv2.putText(img, text, (pos[0] + 4, pos[1] + 4), cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), thickness + 2)
+    def _draw_text(
+        self,
+        img: np.ndarray,
+        text: str,
+        pos: Tuple[int, int],
+        scale: float,
+        color: Tuple[int, int, int],
+        thickness: int,
+    ) -> None:
+        """Draws text with shadow for better visibility.
+
+        Args:
+            img (np.ndarray): Image array to draw on.
+            text (str): The text to draw.
+            pos (Tuple[int, int]): Position (x, y) for the text.
+            scale (float): Font scale.
+            color (Tuple[int, int, int]): Font color in BGR format.
+            thickness (int): Font thickness.
+        """
+        cv2.putText(
+            img,
+            text,
+            (pos[0] + 4, pos[1] + 4),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            scale,
+            (0, 0, 0),
+            thickness + 2,
+        )
         cv2.putText(img, text, pos, cv2.FONT_HERSHEY_SIMPLEX, scale, color, thickness)
 
-    def _save_overlay_canvas(self, canvas: np.ndarray, frame_idx: Optional[int]) -> None:
+    def _save_overlay_canvas(
+        self, canvas: np.ndarray, frame_idx: Optional[int]
+    ) -> None:
         """Saves the final overlay canvas to disk."""
         if frame_idx is not None and self.frames_dir:
             cv2.imwrite(str(self.frames_dir / f"overlay_{frame_idx:04d}.png"), canvas)
