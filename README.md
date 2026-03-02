@@ -10,39 +10,14 @@ This repository presents a vision-based positioning process for estimating the h
 </p>
 
 ## Table of Contents
-- [Quick Start](#quick-start)
-- [Reproducibility](#reproducibility)
+- [Environment Setup and Usage](#environment-setup-and-usage)
 - [Methodology](#methodology)
 - [Experimental Setup](#experimental-setup)
 - [Results](#results)
 - [Limitations and Future Work](#limitations-and-future-work)
 - [References & Acknowledgments](#references--acknowledgments)
 
-## Quick Start
-
-The commands below reproduce a standard evaluation run (Region 11, Google, zoom level 16).
-
-```bash
-# 1) Clone with submodules
-git clone --recursive https://github.com/hamitbugrabayram/AerialPositioning.git
-cd AerialPositioning
-
-# 2) Create environment
-conda create -n aerialpos python=3.9 -y
-conda activate aerialpos
-pip install -r requirements.txt
-
-# 3) Prepare dataset/maps for the selected setting
-python runner.py --dataset-prepare 11 --zoom-levels 16 --tile-provider google
-
-# 4) Run trajectory evaluation
-python runner.py --dataset-eval 11 --zoom-levels 16 --tile-provider google
-
-# 5) Generate summary report
-python runner.py --eval-summary 11
-```
-
-## Reproducibility
+## Environment Setup and Usage
 
 ### 1. Environment Setup
 
@@ -110,12 +85,12 @@ Default parameters: $r_0 = 1000\text{ m}$, $r_{max} = 10000\text{ m}$, $f_{grow}
 ### 4. Deep Matching and Geometric Verification
 Dense or semi-dense correspondences are computed using deep transformer-based matchers (e.g., LoFTR, GIM). A planar homography $H$ between query and reference tile is then estimated via RANSAC. Acceptance is conditioned on stability checks, including a determinant constraint ($|\det H| \approx 1$) for near-rigid behavior, image-boundary consistency of projected corners, and non-degeneracy of the estimated transformation.
 
-## Experimental Setup
+## Evaluation Setup
 
 The results reported below correspond to the following setup:
 
-*   **Dataset:** UAV-VisLoc, Region 11 (Shandan).
-*   **Matcher Backend:** GIM (LightGlue variant).
+*   **Region:** Shandan (11).
+*   **Matcher:** GIM (LightGlue variant).
 *   **Tile Providers:** ESRI and Google.
 *   **Zoom Levels:** 15 and 16.
 *   **Temporal Sampling:** `sample_interval=1` (all 590 frames evaluated).
