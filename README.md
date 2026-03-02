@@ -1,5 +1,5 @@
 # Aerial Positioning: Visual Positioning for Aerial Imagery Using Pre-existing Satellite Images
-*Capstone Project | B.Sc. in Astronautical Engineering*
+*Developed as a Capstone Project | B.Sc. in Astronautical Engineering*
 
 This repository presents a vision-based positioning process for estimating the horizontal position (latitude and longitude) of an aerial platform in GNSS-denied environments. Given only an initial starting position, the method matches onboard imagery against pre-existing satellite map tiles to produce coordinate estimates purely from visual information. To improve cross-view consistency, the process uses aerial vehicle attitude information to rectify oblique camera views into a nadir-oriented perspective aligned with satellite imagery.
 
@@ -32,21 +32,13 @@ conda create -n aerialpos python=3.9 -y
 conda activate aerialpos
 pip install -r requirements.txt
 
-# 3) Download matcher weights (example: MINIMA)
-cd matchers/MINIMA/weights && bash download.sh && cd ../../..
-
-# 4) Download UAV-VisLoc dataset:
-#    https://github.com/IntelliSensing/UAV-VisLoc
-#    Then extract it:
-unzip UAV_VisLoc_dataset.zip -d _VisLoc_dataset
-
-# 5) Prepare dataset/maps for the selected setting
+# 3) Prepare dataset/maps for the selected setting
 python runner.py --dataset-prepare 11 --zoom-levels 16 --tile-provider google
 
-# 6) Run trajectory evaluation
+# 4) Run trajectory evaluation
 python runner.py --dataset-eval 11 --zoom-levels 16 --tile-provider google
 
-# 7) Generate summary report
+# 5) Generate summary report
 python runner.py --eval-summary 11
 ```
 
@@ -136,8 +128,8 @@ The results reported below correspond to the following setup:
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Shandan (11)** | **ESRI** | **15** | **70.51%** | **29.84m** | **354.6** |
 | **Shandan (11)** | **Google** | **15** | **74.75%** | **30.96m** | **342.2** |
-| **Shandan (11)** | **ESRI** | **16** | **98.31%** | **29.89m** | **521.8** |
-| **Shandan (11)** | **Google** | **16** | **99.32%** | **30.08m** | **538.9** |
+| **Shandan (11)** | **ESRI** | **16** | **98.14%** | **29.93m** | **521.5** |
+| **Shandan (11)** | **Google** | **16** | **99.32%** | **30.06m** | **538.6** |
 
 ### Zoom 16 Error Evolution
 <p align="center">
