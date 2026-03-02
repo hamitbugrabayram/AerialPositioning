@@ -1,12 +1,12 @@
 # Aerial Positioning: Visual Positioning for Aerial Imagery Using Pre-existing Satellite Images
 *Capstone Project | B.Sc. in Astronautical Engineering*
 
-This repository presents a vision-based positioning pipeline intended as a complementary aiding source for inertial navigation systems (INS) in GNSS-denied environments. The method estimates the horizontal position (latitude and longitude) of an aerial platform by matching onboard imagery against pre-existing satellite map tiles. The resulting visual position estimates can be used as periodic corrections to limit INS drift over time. To improve cross-view consistency, the pipeline uses vehicle attitude information to rectify oblique camera views into a nadir-oriented perspective aligned with satellite imagery.
+This repository presents a vision-based positioning process for estimating the horizontal position (latitude and longitude) of an aerial platform in GNSS-denied environments. Given only an initial starting position, the method matches onboard imagery against pre-existing satellite map tiles to produce coordinate estimates purely from visual information. To improve cross-view consistency, the process uses aerial vehicle attitude information to rectify oblique camera views into a nadir-oriented perspective aligned with satellite imagery.
 
 <p align="center">
-  <img src="assets/zoom16_combined_showcase.gif" width="1000">
+  <img src="assets/zoom16_combined_showcase.gif">
   <br>
-  <i>GNSS-Free Coordinate Estimation: Ground Truth (Orange) vs. Estimated Position (Blue)</i>
+  <i>Ground Truth (Green) vs. Estimated Position (Orange)</i>
 </p>
 
 ## Table of Contents
@@ -20,7 +20,7 @@ This repository presents a vision-based positioning pipeline intended as a compl
 
 ## Quick Start
 
-The commands below reproduce a standard benchmark run (Region 11, ESRI, zoom level 16).
+The commands below reproduce a standard evaluation run (Region 11, Google, zoom level 16).
 
 ```bash
 # 1) Clone with submodules
@@ -41,10 +41,10 @@ cd matchers/MINIMA/weights && bash download.sh && cd ../../..
 unzip UAV_VisLoc_dataset.zip -d _VisLoc_dataset
 
 # 5) Prepare dataset/maps for the selected setting
-python runner.py --dataset-prepare 11 --zoom-levels 16 --tile-provider esri
+python runner.py --dataset-prepare 11 --zoom-levels 16 --tile-provider google
 
 # 6) Run trajectory evaluation
-python runner.py --dataset-eval 11 --zoom-levels 16 --tile-provider esri
+python runner.py --dataset-eval 11 --zoom-levels 16 --tile-provider google
 
 # 7) Generate summary report
 python runner.py --eval-summary 11
@@ -71,7 +71,7 @@ Expected layout after preparation:
 ```text
 datasets/
 ├── 01_Changjiang_20/
-│   ├── query/                # UAV images + unified metadata
+│   ├── query/                
 │   └── map/
 │       ├── esri/
 │       │   └── 16/
@@ -92,40 +92,28 @@ python runner.py --dataset-eval 11 --zoom-levels 16 --tile-provider esri
 python runner.py --eval-summary all
 ```
 
-### 4. Key Configuration Parameters
-
-Core experimental parameters are defined in `config.yaml`:
-
-```yaml
-positioning_params:
-  min_inliers_for_success: 50
-  sample_interval: 1
-  radius_levels: [1000.0, 2000.0, 3000.0]
-```
-
-Additional controls (matcher type, thresholds, model weights, preprocessing) are also specified in `config.yaml`.
-
 ## Methodology
 
 ### Pipeline Overview
 *   **Offline Tile Retrieval:** A multi-provider retrieval module pre-downloads and caches georeferenced tiles (ESRI/Google) before runtime.
 *   **Perspective Rectification:** Oblique UAV frames are transformed into nadir-view imagery using camera intrinsics and vehicle attitude (roll/pitch/yaw).
-*   **Displacement Propagation:** In trajectory evaluation, the next search center is propagated via frame-to-frame ground-truth displacement and corrected by successful visual matches.
-*   **Adaptive Search Radius:** Candidate-map filtering expands progressively (1000 m → 2000 m → 3000 m) when matching is unsuccessful.
+*   **Intra-frame Adaptive Exponential Backoff Search:** Given an initial position, the search center tracks the last successful match. If a match fails, the search radius dynamically grows exponentially (e.g., ×2.0) *within the same frame* up to a max limit to quickly recover the platform. Upon success, the excess radius cools down toward the initial value for subsequent frames.
 *   **Deep Matching and Geometric Validation:** Transformer-based correspondences (e.g., LoFTR/GIM) are validated through RANSAC and geometric plausibility constraints.
 
 ### 1. Offline Tile Retrieval
 Satellite maps are downloaded offline prior to execution. A decoupled tile retrieval engine supports multiple providers (ESRI, Google), enabling high-resolution tiles for the region of interest to be cached in advance and served without live network access during positioning.
 
 ### 2. Perspective Warping (Nadir Transformation)
-Oblique UAV imagery is rectified to a nadir (top-down) view to establish geometric comparability with ortho-rectified satellite tiles. The warp homography is derived from camera intrinsics $K$ and vehicle attitude $R_{AV}$ (roll, pitch, yaw), with a target rotation $R_{nadir}$ that aligns the view with the world vertical:
+Oblique UAV imagery is rectified to a nadir (top-down), north-facing view to establish geometric comparability with ortho-rectified satellite tiles. The warp homography is derived from camera intrinsics $K$ and vehicle attitude $R_{AV}$ (roll, pitch, yaw), with a target rotation $R_{nadir}$ that aligns the view with the geographic north and world vertical:
 $$H_{warp} = K \cdot R_{AV}^T \cdot R_{nadir} \cdot K^{-1}$$
-Adaptive yaw selects the in-plane rotation that minimizes resampling artifacts while preserving valid image coverage.
 
-### 3. Displacement Propagation (INS/Odometry Proxy in Evaluation)
-During trajectory evaluation, the next search center is propagated from the last visual state using frame-to-frame displacement derived from query metadata (latitude/longitude ground-truth differences), rather than from live IMU integration:
-$$\hat{p}_i = p^{fix}_{i-1} + \left(p^{GT}_i - p^{GT}_{i-1}\right)$$
-With `sample_interval=1`, displacement is computed between consecutive frames. If visual matching succeeds, the state is corrected using the updated visual estimate (`predicted_latitude`, `predicted_longitude`); if matching fails, the propagated center is retained. Candidate satellite tiles are then filtered around this reference point using adaptive radii (1000 m → 2000 m → 3000 m).
+### 3. Adaptive Exponential Backoff Search
+The search center is initialized from the platform's known starting position. On each frame, candidate satellite tiles are filtered around the current search center using an **intra-frame adaptive exponential backoff** radius:
+
+* **On failure:** the search radius dynamically expands by a growth factor ($r \leftarrow \min(r \cdot f_{grow},\; r_{max})$) and matching is re-attempted *on the same query image* until it succeeds or hits the cap. This allows the system to recover from long GNSS-denied gaps or visual mismatches.
+* **On success:** the search center snaps to the new matched position, and the excess radius above the initial value decays by a cooldown factor ($r \leftarrow r_0 + (r - r_0) \cdot f_{cool}$) for the next frame.
+
+Default parameters: $r_0 = 1000\text{ m}$, $r_{max} = 10000\text{ m}$, $f_{grow} = 2.0$, $f_{cool} = 0.5$.
 
 ### 4. Deep Matching and Geometric Verification
 Dense or semi-dense correspondences are computed using deep transformer-based matchers (e.g., LoFTR, GIM). A planar homography $H$ between query and reference tile is then estimated via RANSAC. Acceptance is conditioned on stability checks, including a determinant constraint ($|\det H| \approx 1$) for near-rigid behavior, image-boundary consistency of projected corners, and non-degeneracy of the estimated transformation.
@@ -139,7 +127,7 @@ The results reported below correspond to the following setup:
 *   **Tile Providers:** ESRI and Google.
 *   **Zoom Levels:** 15 and 16.
 *   **Temporal Sampling:** `sample_interval=1` (all 590 frames evaluated).
-*   **Search Strategy:** `radius_levels=[1000, 2000, 3000]`.
+*   **Search Strategy:** Intra-frame adaptive backoff (`initial=1000m`, `max=10000m`, `growth=2.0`, `cooldown=0.5`).
 *   **Geometric Acceptance:** `min_inliers_for_success=50`.
 
 ## Results
@@ -165,7 +153,7 @@ The results reported below correspond to the following setup:
 ## Limitations and Future Work
 
 ### Current Limitations
-*   **Evaluation-Time Motion Proxy:** Displacement propagation relies on frame-to-frame ground-truth metadata differences during evaluation and does not represent a live IMU-driven navigation solution.
+*   **Initial Position Requirement:** The system requires a known starting coordinate to initialize the search center.
 *   **Planar Scene Assumption:** Homography-based localization is most reliable when local scene geometry is approximately planar.
 *   **Map Dependency:** Performance depends on satellite-tile quality, seasonal consistency, and provider-specific appearance.
 
@@ -181,6 +169,3 @@ The results reported below correspond to the following setup:
 3. **[Visual Localization](https://github.com/TerboucheHacene/visual_localization):** Vision-based GNSS-free localization concept.
 4. **Deep Matchers:** [GIM](https://github.com/xuelunshen/gim), [LightGlue](https://github.com/cvg/LightGlue), [LoFTR](https://github.com/zju3dv/LoFTR), [MINIMA](https://github.com/LSXI7/MINIMA).
 5. **Satellite Imagery Providers:** ESRI World Imagery, Google Maps.
-
----
-*Developed as a B.Sc. Graduation Project.*
