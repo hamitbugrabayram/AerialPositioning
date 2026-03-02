@@ -172,7 +172,6 @@ class Evaluator(PositioningRunner):
                 search_lat = last_match_lat
                 search_lon = last_match_lon
 
-                # Search dynamically within the same frame up to max_radius_m
                 while True:
                     result = self._match_with_adaptive_radius(
                         query_row,
@@ -202,11 +201,10 @@ class Evaluator(PositioningRunner):
                                 self.initial_radius_m + excess * self.cooldown_factor
                             )
                         consecutive_failures = 0
-                        break  # Found a match, move to next frame
+                        break
                     else:
                         consecutive_failures += 1
                         if current_radius >= self.max_radius_m:
-                            # Reached max radius, stop searching this frame
                             break
                         
                         _logger.info(

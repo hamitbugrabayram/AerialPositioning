@@ -6,6 +6,7 @@ structured loggers for different components of the system.
 
 import logging
 import sys
+from typing import Any, cast
 
 _FALLBACK_LEVEL = 60
 logging.addLevelName(_FALLBACK_LEVEL, "FALLBACK")
@@ -29,7 +30,7 @@ class CustomFormatter(logging.Formatter):
 
     FORMATS = {
         logging.DEBUG: grey + format_str + reset,
-        logging.INFO: blue + "[LOG] %(message)s" + reset,
+        logging.INFO: blue + format_str + reset,
         logging.WARNING: yellow + format_str + reset,
         logging.ERROR: red + format_str + reset,
         logging.CRITICAL: bold_red + format_str + reset,
@@ -57,7 +58,7 @@ class AppLogger(logging.Logger):
         name: The name of the logger.
     """
 
-    def fallback(self, msg: str, *args: object, **kwargs: object) -> None:
+    def fallback(self, msg: str, *args: Any, **kwargs: Any) -> None:
         """Logs a message with level FALLBACK.
 
         Args:
@@ -68,12 +69,11 @@ class AppLogger(logging.Logger):
         if self.isEnabledFor(_FALLBACK_LEVEL):
             self._log(_FALLBACK_LEVEL, msg, args, **kwargs)
 
-
 def get_logger(name: str) -> AppLogger:
     """Creates or retrieves a standardized logger instance.
 
     Args:
-        name: The name of the logger, typically `__name__`.
+        name: The name of the logger, typically __name__.
 
     Returns:
         A configured AppLogger instance.
@@ -86,4 +86,4 @@ def get_logger(name: str) -> AppLogger:
         handler.setFormatter(CustomFormatter())
         logger.addHandler(handler)
         logger.propagate = False
-    return logger  # type: ignore
+    return cast(AppLogger, logger)
