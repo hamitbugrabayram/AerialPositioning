@@ -6,7 +6,7 @@ This repository presents a vision-based positioning process for estimating the h
 <p align="center">
   <img src="assets/zoom16_combined_showcase.gif">
   <br>
-  <i>Ground Truth (Green) vs. Estimated Position (Orange)</i>
+  <i>Ground Truth (Green) vs. Estimated Position (Blue)</i>
 </p>
 
 ## Table of Contents
