@@ -169,45 +169,53 @@ class Evaluator(PositioningRunner):
         for idx, query_row in self.sampled_query_df.iterrows():
             try:
                 idx_int = int(cast(Any, idx))
-
                 search_lat = last_match_lat
                 search_lon = last_match_lon
 
-                result = self._match_with_adaptive_radius(
-                    query_row,
-                    idx_int,
-                    temp_dir,
-                    min_inliers,
-                    save_viz,
-                    search_lat,
-                    search_lon,
-                    current_radius,
-                )
+                # Search dynamically within the same frame up to max_radius_m
+                while True:
+                    result = self._match_with_adaptive_radius(
+                        query_row,
+                        idx_int,
+                        temp_dir,
+                        min_inliers,
+                        save_viz,
+                        search_lat,
+                        search_lon,
+                        current_radius,
+                    )
 
-                if result.success:
-                    last_match_lat = float(
-                        result.predicted_latitude
-                        if result.predicted_latitude is not None
-                        else search_lat
-                    )
-                    last_match_lon = float(
-                        result.predicted_longitude
-                        if result.predicted_longitude is not None
-                        else search_lon
-                    )
-                    excess = current_radius - self.initial_radius_m
-                    if excess > 0:
-                        current_radius = (
-                            self.initial_radius_m + excess * self.cooldown_factor
+                    if result.success:
+                        last_match_lat = float(
+                            result.predicted_latitude
+                            if result.predicted_latitude is not None
+                            else search_lat
                         )
-                    consecutive_failures = 0
-                else:
-                    last_match_lat = search_lat
-                    last_match_lon = search_lon
-                    current_radius = min(
-                        current_radius * self.growth_factor, self.max_radius_m
-                    )
-                    consecutive_failures += 1
+                        last_match_lon = float(
+                            result.predicted_longitude
+                            if result.predicted_longitude is not None
+                            else search_lon
+                        )
+                        excess = current_radius - self.initial_radius_m
+                        if excess > 0:
+                            current_radius = (
+                                self.initial_radius_m + excess * self.cooldown_factor
+                            )
+                        consecutive_failures = 0
+                        break  # Found a match, move to next frame
+                    else:
+                        consecutive_failures += 1
+                        if current_radius >= self.max_radius_m:
+                            # Reached max radius, stop searching this frame
+                            break
+                        
+                        _logger.info(
+                            f"Frame: {idx_int + 1}/{total_frames} failed at "
+                            f"{current_radius:.0f}m. Expanding search radius..."
+                        )
+                        current_radius = min(
+                            current_radius * self.growth_factor, self.max_radius_m
+                        )
 
                 results.append(result)
                 if self.save_frame_sequence:

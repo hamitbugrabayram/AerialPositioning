@@ -144,8 +144,13 @@ class PositioningConfig:
                 "min_inliers_for_success": 75,
                 "save_visualization": True,
                 "sample_interval": 1,
-                "radius_levels": [1000.0, 2000.0, 3000.0],
                 "save_frame_sequence": False,
+                "adaptive_search": {
+                    "initial_radius_m": 1000.0,
+                    "max_radius_m": 10000.0,
+                    "growth_factor": 2.0,
+                    "cooldown_factor": 0.5,
+                }
             },
             tile_provider=config.get(
                 "tile_provider", {"name": "esri", "cache_dir": "satellite"}

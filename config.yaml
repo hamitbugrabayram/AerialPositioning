@@ -52,7 +52,11 @@ positioning_params:
   save_visualization: false
   save_frame_sequence: false
   sample_interval: 1
-  radius_levels: [1000.0, 2000.0, 3000.0]
+  adaptive_search:
+    initial_radius_m: 1000.0
+    max_radius_m: 10000.0
+    growth_factor: 2.0
+    cooldown_factor: 0.5
 
 tile_provider:
   name: esri
