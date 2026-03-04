@@ -10,7 +10,7 @@ Reference:
 
 import re
 from itertools import chain
-from math import atan, cos, exp, floor, log, pi, sin
+from math import atan, cos, exp, floor, log, log2, pi, sin
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -90,6 +90,62 @@ class TileSystem:
             * TileSystem.EARTH_RADIUS
             / TileSystem.map_size(level)
         )
+
+    @staticmethod
+    def optimal_zoom_level(
+        altitude_m: float,
+        latitude: float,
+        coverage_factor: float = 2.0,
+        max_grid: int = 11,
+        min_level: int = 15,
+        max_level: int = 21,
+    ) -> int:
+        """Computes the best zoom level for a given flight altitude.
+
+        Selects the highest zoom level (most detail) where the adaptive
+        tile grid stays at or below ``max_grid`` tiles.  Higher zoom
+        means better tile detail; the adaptive stitching in the engine
+        handles larger grids at runtime.
+
+        The relationship is::
+
+            tile_coverage = ground_resolution(lat, level) * 256
+            grid_needed   = ceil(altitude * coverage_factor / tile_coverage)
+
+        We want ``grid_needed <= max_grid``, solved for *level*::
+
+            level = floor(log2(
+                cos(lat) * 2 * pi * R * max_grid
+                / (altitude * coverage_factor)
+            ))
+
+        Args:
+            altitude_m: Median / representative drone altitude in metres.
+            latitude: Representative latitude in degrees.
+            coverage_factor: Ground-coverage multiplier (same as in
+                ``map_context.coverage_factor``).
+            max_grid: Maximum allowed grid dimension (default 11,
+                i.e. up to 11x11 = 2816 px composite).
+            min_level: Lowest zoom level to return.
+            max_level: Highest zoom level to return.
+
+        Returns:
+            Integer zoom level clamped to [min_level, max_level].
+        """
+        if altitude_m <= 0:
+            return max_level
+
+        lat_rad = abs(latitude) * pi / 180.0
+        cos_lat = cos(lat_rad) if abs(latitude) < 85.0 else 0.003
+
+        numerator = cos_lat * 2.0 * pi * TileSystem.EARTH_RADIUS * max_grid
+        denominator = altitude_m * coverage_factor
+
+        if denominator <= 0 or numerator <= 0:
+            return max_level
+
+        level = int(floor(log2(numerator / denominator)))
+        return max(min_level, min(level, max_level))
 
     @staticmethod
     def map_scale(lat: float, level: int, screen_dpi: float) -> float:

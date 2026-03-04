@@ -5,6 +5,7 @@ This module provides the PositioningEngine class which handles image
 preprocessing, matching against satellite tiles, and georeferencing.
 """
 
+import math
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, cast
 
@@ -41,16 +42,6 @@ class PositioningEngine:
         self._pair_log_cache: set[str] = set()
         self._pair_log_seq_by_query: Dict[str, int] = {}
         self._query_variants_cache: Dict[str, list[Tuple[Path, Tuple[int, ...]]]] = {}
-
-    def _multi_variant_enabled(self) -> bool:
-        """Returns whether multiple preprocessing variants are enabled."""
-        p_cfg = self.config.preprocessing if isinstance(self.config.preprocessing, dict) else {}
-        mv_cfg = p_cfg.get("multi_variant", {})
-        if isinstance(mv_cfg, bool):
-            return mv_cfg
-        if isinstance(mv_cfg, dict):
-            return bool(mv_cfg.get("enabled", True))
-        return True
 
     def _pair_logging_config(self) -> Dict[str, Any]:
         """Returns normalized pair logging configuration."""
@@ -98,8 +89,20 @@ class PositioningEngine:
         inliers: int,
         matcher_success: bool,
         error_meters: Optional[float] = None,
+        match_results: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Saves side-by-side diagnostics for query-map match attempts."""
+        """Saves rich diagnostics for query-map match attempts.
+
+        When ``match_results`` is provided (contains ``mkpts0``, ``mkpts1``,
+        ``inliers``, and optionally ``homography``), the pair log shows:
+
+        * Inlier keypoints and match lines (green).
+        * Homography polygon projected onto the map (cyan).
+        * Projected query center as a crosshair.
+
+        Falls back to a plain side-by-side image when no match data is
+        available.
+        """
         if not self._should_log_pair(status):
             return
 
@@ -111,13 +114,63 @@ class PositioningEngine:
         if max_pairs > 0 and len(self._pair_log_cache) >= max_pairs:
             return
 
+        pair_dir = Path(self.config.data_paths["output_dir"]) / "pair_logs"
+        pair_dir.mkdir(parents=True, exist_ok=True)
+
+        seq = self._pair_log_seq_by_query.get(query_path.name, 0) + 1
+        out_name = (
+            f"{seq:04d}__{Path(query_path.name).stem}"
+            f"__{Path(map_path.name).stem}__{status}.jpg"
+        )
+        out_path = pair_dir / out_name
+
+        has_match_data = (
+            match_results is not None
+            and match_results.get("mkpts0") is not None
+            and len(match_results["mkpts0"]) > 0
+        )
+        if has_match_data:
+            try:
+                from src.utils.visualization import create_match_visualization
+
+                mkpts0 = match_results["mkpts0"]
+                mkpts1 = match_results["mkpts1"]
+                inlier_mask = match_results.get("inliers")
+                if inlier_mask is None:
+                    inlier_mask = np.zeros(len(mkpts0), dtype=bool)
+                homography = match_results.get("homography")
+
+                err_str = (
+                    f"{error_meters:.1f}m" if error_meters is not None else "n/a"
+                )
+                text_lines = [
+                    f"{status}  |  inliers={inliers}  |  error={err_str}",
+                    f"query={query_path.name}  |  map={map_path.name}",
+                ]
+
+                create_match_visualization(
+                    image0_path=query_path,
+                    image1_path=map_path,
+                    mkpts0=mkpts0,
+                    mkpts1=mkpts1,
+                    inliers_mask=inlier_mask,
+                    output_path=out_path,
+                    text_info=text_lines,
+                    show_outliers=True,
+                    target_height=720,
+                    homography=homography,
+                )
+
+                self._pair_log_cache.add(key)
+                self._pair_log_seq_by_query[query_path.name] = seq
+                return
+            except Exception:
+                pass 
+
         query_img = cv2.imread(str(query_path))
         map_img = cv2.imread(str(map_path))
         if query_img is None or map_img is None:
             return
-
-        pair_dir = Path(self.config.data_paths["output_dir"]) / "pair_logs"
-        pair_dir.mkdir(parents=True, exist_ok=True)
 
         target_h = max(query_img.shape[0], map_img.shape[0])
 
@@ -139,48 +192,23 @@ class PositioningEngine:
         canvas[header_h:, q_view.shape[1] + gap :] = m_view
 
         cv2.putText(
-            canvas,
-            f"PAIR LOG | status={status}",
-            (10, 26),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.72,
-            (20, 20, 20),
-            2,
-            cv2.LINE_AA,
+            canvas, f"PAIR LOG | status={status}",
+            (10, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.72, (20, 20, 20), 2, cv2.LINE_AA,
         )
         cv2.putText(
-            canvas,
-            f"query={query_path.name} | map={map_path.name}",
-            (10, 54),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
-            (20, 20, 20),
-            2,
-            cv2.LINE_AA,
+            canvas, f"query={query_path.name} | map={map_path.name}",
+            (10, 54), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (20, 20, 20), 2, cv2.LINE_AA,
         )
+        err_str = error_meters if error_meters is not None else "na"
         cv2.putText(
             canvas,
-            f"matcher_success={matcher_success} | inliers={inliers} | "
-            f"error_m={error_meters if error_meters is not None else 'na'}",
-            (10, 78),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
-            (20, 20, 20),
-            2,
-            cv2.LINE_AA,
+            f"matcher_success={matcher_success} | inliers={inliers} | error_m={err_str}",
+            (10, 78), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (20, 20, 20), 2, cv2.LINE_AA,
         )
 
-        out_name = (
-            f"{self._pair_log_seq_by_query.get(query_path.name, 0) + 1:04d}"
-            f"__{Path(query_path.name).stem}__{Path(map_path.name).stem}"
-            f"__{status}.jpg"
-        )
-        out_path = pair_dir / out_name
         cv2.imwrite(str(out_path), canvas)
         self._pair_log_cache.add(key)
-        self._pair_log_seq_by_query[query_path.name] = (
-            self._pair_log_seq_by_query.get(query_path.name, 0) + 1
-        )
+        self._pair_log_seq_by_query[query_path.name] = seq
 
     def _save_failed_pair(
         self,
@@ -189,6 +217,7 @@ class PositioningEngine:
         reason: str,
         inliers: int,
         matcher_success: bool,
+        match_results: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Backward-compatible wrapper for failed pair logging."""
         self._save_pair_log(
@@ -198,6 +227,7 @@ class PositioningEngine:
             inliers,
             matcher_success,
             None,
+            match_results=match_results,
         )
 
     def _map_context_enabled(self) -> bool:
@@ -207,34 +237,100 @@ class PositioningEngine:
             return map_context
         return bool(map_context.get("enabled", False))
 
-    def _map_context_edge_pixels(self) -> int:
-        """Returns edge size (in pixels) contributed by neighbors per side."""
+    def _map_context_coverage_factor(self) -> float:
+        """Returns the altitude-to-ground-coverage multiplier.
+
+        The drone's approximate ground coverage in meters is estimated as
+        ``altitude * coverage_factor``.  Typical values:
+
+        * 1.5 -- conservative, suits narrow FOV cameras (~60-70 deg).
+        * 2.0 -- moderate, suits most consumer drones (~75-85 deg).
+        * 2.5 -- generous, suits wide-angle cameras (>85 deg).
+        """
         map_context = self.config.positioning_params.get("map_context", {})
         if isinstance(map_context, dict):
             try:
-                edge = int(map_context.get("edge_pixels", 128))
+                return max(0.5, float(map_context.get("coverage_factor", 2.0)))
             except Exception:
-                edge = 128
-        else:
-            edge = 128
-        return max(0, min(128, edge))
+                return 2.0
+        return 2.0
 
-    def _compose_half_neighbor_context(
-        self, map_row: pd.Series
+    def _calculate_adaptive_grid_size(
+        self,
+        altitude_m: float,
+        latitude: float,
+        level: int,
+    ) -> int:
+        """Determines the tile grid size needed to cover the drone's view.
+
+        Estimates the ground coverage from the flight altitude and a
+        configurable ``coverage_factor``, then computes how many tiles at
+        the given zoom level and latitude are required to contain that area.
+
+        The result is clamped to ``map_context.max_grid`` (default 5) so
+        that the composite stays small enough for the matcher's internal
+        resize (typically 768 px) to preserve useful detail.
+
+        Args:
+            altitude_m: Drone altitude in meters above ground.
+            latitude: Query latitude in degrees (affects tile size in meters).
+            level: Tile zoom level.
+
+        Returns:
+            Odd integer grid size (1, 3, 5, ...).
+        """
+        map_ctx = self.config.positioning_params.get("map_context", {})
+        max_grid = 5
+        if isinstance(map_ctx, dict):
+            try:
+                max_grid = int(map_ctx.get("max_grid", 5))
+            except (TypeError, ValueError):
+                max_grid = 5
+
+        if altitude_m <= 0:
+            return min(3, max_grid)
+
+        coverage_m = altitude_m * self._map_context_coverage_factor()
+
+        tile_coverage_m = TileSystem.ground_resolution(latitude, level) * 256.0
+        if tile_coverage_m <= 0:
+            return min(3, max_grid)
+
+        grid_size = math.ceil(coverage_m / tile_coverage_m)
+        if grid_size < 1:
+            grid_size = 1
+        if grid_size > max_grid:
+            grid_size = max_grid
+        if grid_size % 2 == 0:
+            grid_size += 1
+        return grid_size
+
+    def _compose_grid_context(
+        self, map_row: pd.Series, grid_size: int
     ) -> Tuple[Path, np.ndarray, Dict[str, Any]]:
-        """Builds a context map with center tile + nearest neighbor halves.
+        """Builds a context map by stitching a NxN grid of tiles.
 
-        The output image is 512x512 and includes:
-        - full center tile in the middle (256x256)
-        - left/right/top/bottom neighbor near halves
-        - corner neighbor near quadrants
+        Creates a composite image from an NxN grid of tiles centered on the
+        target tile. For example, with grid_size=3 the output is 768x768
+        (3x3 tiles of 256px each), and with grid_size=5 it is 1280x1280.
+
+        Args:
+            map_row: Map tile metadata row.
+            grid_size: NxN grid dimension (must be odd and >= 1).
 
         Returns:
             Tuple containing context image path, context image array,
             and effective map metadata matching the composed view.
         """
+        if grid_size < 1:
+            grid_size = 1
+        if grid_size % 2 == 0:
+            grid_size += 1
+
         map_filename = str(map_row["Filename"])
-        cache_hit = self._map_context_cache.get(map_filename)
+        cache_key = f"{map_filename}_grid{grid_size}"
+
+        cache_hit = self._map_context_cache.get(cache_key)
         if cache_hit is not None:
             cached_path = Path(str(cache_hit["path"]))
             cached_img = cv2.imread(str(cached_path))
@@ -249,55 +345,44 @@ class PositioningEngine:
         tile_x = int(cast(Any, map_row["TileX"]))
         tile_y = int(cast(Any, map_row["TileY"]))
         level = int(cast(Any, map_row["Level"]))
-        provider = str(map_row.get("Provider", self.config.tile_provider.get("name", "esri")))
+        provider = str(
+            map_row.get(
+                "Provider", self.config.tile_provider.get("name", "esri")
+            )
+        )
 
-        def tile_path(tx: int, ty: int) -> Path:
-            return map_dir / f"tile_{provider}_{level}_{tx}_{ty}.jpg"
+        half = grid_size // 2
 
         def load_or_blank(tx: int, ty: int) -> np.ndarray:
-            candidate = tile_path(tx, ty)
-            if not candidate.exists():
+            path = map_dir / f"tile_{provider}_{level}_{tx}_{ty}.jpg"
+            if not path.exists():
                 return np.full((256, 256, 3), 230, dtype=np.uint8)
-            img = cv2.imread(str(candidate))
+            img = cv2.imread(str(path))
             if img is None:
                 return np.full((256, 256, 3), 230, dtype=np.uint8)
             if img.shape[:2] != (256, 256):
                 return cv2.resize(img, (256, 256), interpolation=cv2.INTER_AREA)
             return img
 
-        center = load_or_blank(tile_x, tile_y)
-        left = load_or_blank(tile_x - 1, tile_y)
-        right = load_or_blank(tile_x + 1, tile_y)
-        top = load_or_blank(tile_x, tile_y - 1)
-        bottom = load_or_blank(tile_x, tile_y + 1)
-        top_left = load_or_blank(tile_x - 1, tile_y - 1)
-        top_right = load_or_blank(tile_x + 1, tile_y - 1)
-        bottom_left = load_or_blank(tile_x - 1, tile_y + 1)
-        bottom_right = load_or_blank(tile_x + 1, tile_y + 1)
+        panel_size = grid_size * 256
+        panel = np.full((panel_size, panel_size, 3), 230, dtype=np.uint8)
 
-        edge = self._map_context_edge_pixels()
-        panel_size = 256 + 2 * edge
-        panel = np.full((panel_size, panel_size, 3), 240, dtype=np.uint8)
-        panel[edge : edge + 256, edge : edge + 256] = center
-        if edge > 0:
-            panel[edge : edge + 256, 0:edge] = left[:, 256 - edge : 256]
-            panel[edge : edge + 256, edge + 256 : edge + 256 + edge] = right[:, 0:edge]
-            panel[0:edge, edge : edge + 256] = top[256 - edge : 256, :]
-            panel[edge + 256 : edge + 256 + edge, edge : edge + 256] = bottom[0:edge, :]
-            panel[0:edge, 0:edge] = top_left[256 - edge : 256, 256 - edge : 256]
-            panel[0:edge, edge + 256 : edge + 256 + edge] = top_right[256 - edge : 256, 0:edge]
-            panel[edge + 256 : edge + 256 + edge, 0:edge] = bottom_left[0:edge, 256 - edge : 256]
-            panel[edge + 256 : edge + 256 + edge, edge + 256 : edge + 256 + edge] = bottom_right[0:edge, 0:edge]
+        for dy in range(-half, half + 1):
+            for dx in range(-half, half + 1):
+                tile_img = load_or_blank(tile_x + dx, tile_y + dy)
+                py = (dy + half) * 256
+                px = (dx + half) * 256
+                panel[py : py + 256, px : px + 256] = tile_img
 
-        out_name = f"{Path(map_filename).stem}_ctx_half_neighbors.jpg"
+        out_name = f"{Path(map_filename).stem}_ctx_grid_{grid_size}x{grid_size}.jpg"
         out_path = context_dir / out_name
         cv2.imwrite(str(out_path), panel)
 
-        center_px_x, center_px_y = TileSystem.tile_xy_to_pixel_xy(tile_x, tile_y)
-        nw_px_x = center_px_x - edge
-        nw_px_y = center_px_y - edge
-        se_px_x = center_px_x + 256 + edge
-        se_px_y = center_px_y + 256 + edge
+        nw_px_x, nw_px_y = TileSystem.tile_xy_to_pixel_xy(
+            tile_x - half, tile_y - half
+        )
+        se_px_x = nw_px_x + panel_size
+        se_px_y = nw_px_y + panel_size
         nw_lat, nw_lon = TileSystem.pixel_xy_to_latlong(nw_px_x, nw_px_y, level)
         se_lat, se_lon = TileSystem.pixel_xy_to_latlong(se_px_x, se_px_y, level)
 
@@ -308,7 +393,7 @@ class PositioningEngine:
         effective_metadata["Bottom_right_long"] = float(se_lon)
         effective_metadata["Filename"] = out_name
 
-        self._map_context_cache[map_filename] = {
+        self._map_context_cache[cache_key] = {
             "path": str(out_path),
             "metadata": effective_metadata,
         }
@@ -316,9 +401,23 @@ class PositioningEngine:
         return out_path, panel, effective_metadata
 
     def _prepare_map_for_matching(
-        self, map_row: pd.Series
+        self,
+        map_row: pd.Series,
+        query_row: Optional[pd.Series] = None,
     ) -> Tuple[Path, np.ndarray, Dict[str, Any]]:
-        """Returns matcher-ready map image path/data and effective metadata."""
+        """Returns matcher-ready map image path/data and effective metadata.
+
+        When map context is enabled, computes an adaptive grid size based
+        on the drone's altitude and latitude, then stitches neighbouring
+        tiles into a composite that covers the drone's estimated ground
+        footprint.
+
+        Args:
+            map_row: Map tile metadata row.
+            query_row: Optional query metadata row.  When provided,
+                altitude and latitude are read to compute the adaptive
+                grid size.  Falls back to a 3x3 grid when absent.
+        """
         map_filename = str(map_row["Filename"])
         map_path = Path(self.config.data_paths["map_dir"]) / map_filename
         map_img = cv2.imread(str(map_path))
@@ -332,7 +431,25 @@ class PositioningEngine:
         if not required_cols.issubset(set(map_row.index)):
             return map_path, map_img, map_row.to_dict()
 
-        return self._compose_half_neighbor_context(map_row)
+        altitude = 0.0
+        level = int(cast(Any, map_row["Level"]))
+        if query_row is not None:
+            try:
+                altitude = float(query_row.get("Altitude", 0.0))
+            except (TypeError, ValueError):
+                altitude = 0.0
+
+        try:
+            latitude = (
+                float(map_row["Top_left_lat"]) + float(map_row["Bottom_right_lat"])
+            ) / 2.0
+        except (KeyError, TypeError, ValueError):
+            latitude = 0.0
+
+        grid = self._calculate_adaptive_grid_size(altitude, latitude, level)
+        if grid <= 1:
+            return map_path, map_img, map_row.to_dict()
+        return self._compose_grid_context(map_row, grid)
 
     def inject_helpers(self, haversine, predicted_gps, location_and_error):
         """Injects helper functions to avoid circular imports.
@@ -378,60 +495,9 @@ class PositioningEngine:
         metadata = query_row.to_dict()
         variant_images: list[Tuple[np.ndarray, str]] = []
 
-        def _safe_float(value: Any) -> Optional[float]:
-            try:
-                if value is None:
-                    return None
-                return float(value)
-            except Exception:
-                return None
-
-        if self._multi_variant_enabled() and hasattr(self.preprocessor, "_apply_resize"):
-            variant_images.append((img_original, "default"))
-
-            yaw_candidates: list[Tuple[str, float]] = []
-            seen_yaw_candidates: set[Tuple[str, int]] = set()
-            yaw_sources = [
-                ("phi1", metadata.get("Gimball_Yaw_Phi1")),
-                ("phi2", metadata.get("Gimball_Yaw_Phi2")),
-                ("phi1", metadata.get("Phi1")),
-                ("phi2", metadata.get("Phi2")),
-                ("phi1", metadata.get("Gimball_Yaw")),
-            ]
-            for yaw_tag, raw_value in yaw_sources:
-                yaw_value = _safe_float(raw_value)
-                if yaw_value is not None:
-                    key = (yaw_tag, int(round(yaw_value * 1000.0)))
-                    if key in seen_yaw_candidates:
-                        continue
-                    seen_yaw_candidates.add(key)
-                    yaw_candidates.append((yaw_tag, yaw_value))
-
-            try:
-                resized_only = self.preprocessor._apply_resize(img_original)
-                variant_images.append((resized_only, "resized"))
-            except Exception:
-                pass
-
-            ordered_candidates: list[Tuple[str, float]] = []
-            phi1_value = next((v for t, v in yaw_candidates if t == "phi1"), None)
-            phi2_value = next((v for t, v in yaw_candidates if t == "phi2"), None)
-            if phi1_value is not None:
-                ordered_candidates.append(("phi1", phi1_value))
-            if phi2_value is not None:
-                ordered_candidates.append(("phi2", phi2_value))
-
-            for yaw_tag, yaw_value in ordered_candidates:
-                try:
-                    yaw_meta = dict(metadata)
-                    yaw_meta["Gimball_Yaw"] = yaw_value
-                    yaw_processed = self.preprocessor(img_original, yaw_meta)
-                    variant_images.append((yaw_processed, f"preprocessed_{yaw_tag}"))
-                except Exception:
-                    pass
-        else:
-            processed = self.preprocessor(img_original, metadata)
-            variant_images.append((processed, "default"))
+        metadata["Gimball_Yaw"] = metadata.get("Gimball_Yaw_Phi1") or metadata.get("Phi1") or metadata.get("Gimball_Yaw", 0.0)
+        processed = self.preprocessor(img_original, metadata)
+        variant_images.append((processed, "preprocessed"))
 
         if temp_dir:
             prepared: list[Tuple[Path, Tuple[int, ...]]] = []
@@ -485,7 +551,7 @@ class PositioningEngine:
 
         try:
             map_match_path, map_img, effective_map_row = self._prepare_map_for_matching(
-                map_row
+                map_row, query_row=query_row
             )
         except Exception:
             return None
@@ -532,6 +598,7 @@ class PositioningEngine:
                 reason,
                 int(num_inliers),
                 bool(match_results.get("success", False)),
+                match_results=match_results,
             )
             return None
 
@@ -553,6 +620,7 @@ class PositioningEngine:
                 "positioning_exception",
                 int(num_inliers),
                 True,
+                match_results=match_results,
             )
             return None
 
@@ -567,6 +635,7 @@ class PositioningEngine:
                 "positioning_unsuccessful",
                 int(num_inliers),
                 True,
+                match_results=match_results,
             )
             return None
 
@@ -577,6 +646,7 @@ class PositioningEngine:
             int(num_inliers),
             True,
             float(pos_res.get("error_meters", float("inf"))),
+            match_results=match_results,
         )
 
         return {

@@ -111,9 +111,27 @@ def create_match_visualization(
         mkpts1_scaled = mkpts1 * scale1
 
         w_total = w0_new + w1_new
-        canvas = 255 * np.ones((h_target, w_total, 3), dtype=np.uint8)
-        canvas[:h_target, :w0_new] = img0_resized
-        canvas[:h_target, w0_new:w_total] = img1_resized
+
+        header_h = 0
+        if text_info:
+            header_h = 28 * len(text_info) + 12
+
+        canvas = 255 * np.ones(
+            (header_h + h_target, w_total, 3), dtype=np.uint8
+        )
+        canvas[header_h:, :w0_new] = img0_resized
+        canvas[header_h:, w0_new:w_total] = img1_resized
+
+        if text_info:
+            for ti, line in enumerate(text_info):
+                cv2.putText(
+                    canvas, line,
+                    (10, 22 + ti * 28),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                    (20, 20, 20), 2, cv2.LINE_AA,
+                )
+
+        y_off = np.array([0, header_h])
 
         if is_valid_homography(homography):
             corners_0 = np.array(
@@ -123,54 +141,52 @@ def create_match_visualization(
 
             if corners_1 is not None:
                 corners_1_scaled = corners_1 * scale1
-                corners_1_vis = corners_1_scaled + np.array([w0_new, 0])
+                corners_1_vis = (
+                    corners_1_scaled + np.array([w0_new, 0]) + y_off
+                )
                 max_coord = max(h_target, w_total) * 2
                 is_absurd = np.any(np.abs(corners_1_vis) > max_coord)
 
                 if not is_absurd:
+                    poly_color = (255, 255, 0)
                     cv2.polylines(
                         canvas,
                         [corners_1_vis.astype(np.int32)],
                         True,
-                        (255, 0, 0),
+                        poly_color,
                         2,
                         cv2.LINE_AA,
                     )
-                    query_center = np.array([[[w0 / 2.0, h0 / 2.0]]], dtype=np.float32)
+                    query_center = np.array(
+                        [[[w0 / 2.0, h0 / 2.0]]], dtype=np.float32
+                    )
                     projected_center = cv2.perspectiveTransform(
                         query_center, homography
                     )
                     if projected_center is not None:
                         center_pt = projected_center[0, 0]
                         center_pt_scaled = center_pt * scale1
-                        center_pt_vis = center_pt_scaled + np.array([w0_new, 0])
+                        center_pt_vis = (
+                            center_pt_scaled + np.array([w0_new, 0]) + y_off
+                        )
                         if np.all(np.abs(center_pt_vis) < max_coord):
-                            center_pt_int = tuple(np.round(center_pt_vis).astype(int))
-                            color = (255, 0, 0)
-                            size = 12
-                            cv2.line(
-                                canvas,
-                                (center_pt_int[0] - size, center_pt_int[1]),
-                                (center_pt_int[0] + size, center_pt_int[1]),
-                                color,
-                                2,
-                            )
-                            cv2.line(
-                                canvas,
-                                (center_pt_int[0], center_pt_int[1] - size),
-                                (center_pt_int[0], center_pt_int[1] + size),
-                                color,
-                                2,
-                            )
-                            cv2.circle(canvas, center_pt_int, 4, color, -1)
+                            cx_i = int(round(center_pt_vis[0]))
+                            cy_i = int(round(center_pt_vis[1]))
+                            sz = 14
+                            cv2.line(canvas, (cx_i-sz, cy_i), (cx_i+sz, cy_i),
+                                     poly_color, 2, cv2.LINE_AA)
+                            cv2.line(canvas, (cx_i, cy_i-sz), (cx_i, cy_i+sz),
+                                     poly_color, 2, cv2.LINE_AA)
+                            cv2.circle(canvas, (cx_i, cy_i), 5, poly_color, -1,
+                                       cv2.LINE_AA)
 
         if len(inliers_mask) != len(mkpts0):
             inliers_mask = np.zeros(len(mkpts0), dtype=bool)
         else:
             inliers_mask = inliers_mask.astype(bool)
 
-        pts0 = np.round(mkpts0_scaled).astype(int)
-        pts1 = np.round(mkpts1_scaled).astype(int)
+        pts0 = np.round(mkpts0_scaled).astype(int) + y_off
+        pts1 = np.round(mkpts1_scaled).astype(int) + y_off
 
         if show_outliers and line_color_outlier is not None:
             outlier_mask = ~inliers_mask
@@ -180,12 +196,8 @@ def create_match_visualization(
                 pt0 = tuple(pts0_out[i])
                 pt1 = tuple(pts1_out[i] + np.array([w0_new, 0]))
                 cv2.line(
-                    canvas,
-                    pt0,
-                    pt1,
-                    line_color_outlier,
-                    line_thickness,
-                    lineType=cv2.LINE_AA,
+                    canvas, pt0, pt1,
+                    line_color_outlier, line_thickness, lineType=cv2.LINE_AA,
                 )
 
         pts0_in = pts0[inliers_mask]
@@ -194,29 +206,17 @@ def create_match_visualization(
             pt0 = tuple(pts0_in[i])
             pt1 = tuple(pts1_in[i] + np.array([w0_new, 0]))
             cv2.line(
-                canvas,
-                pt0,
-                pt1,
-                line_color_inlier,
-                line_thickness,
-                lineType=cv2.LINE_AA,
+                canvas, pt0, pt1,
+                line_color_inlier, line_thickness, lineType=cv2.LINE_AA,
             )
             if point_size > 0:
                 cv2.circle(
-                    canvas,
-                    pt0,
-                    point_size,
-                    point_color_inlier,
-                    -1,
-                    lineType=cv2.LINE_AA,
+                    canvas, pt0, point_size,
+                    point_color_inlier, -1, lineType=cv2.LINE_AA,
                 )
                 cv2.circle(
-                    canvas,
-                    pt1,
-                    point_size,
-                    point_color_inlier,
-                    -1,
-                    lineType=cv2.LINE_AA,
+                    canvas, pt1, point_size,
+                    point_color_inlier, -1, lineType=cv2.LINE_AA,
                 )
 
         output_path_obj = Path(output_path)

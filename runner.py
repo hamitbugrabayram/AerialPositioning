@@ -156,7 +156,8 @@ class Runner:
             "--zoom-levels",
             type=int,
             nargs="+",
-            help="Zoom levels (Mandatory for eval/prepare)",
+            help="Zoom levels.  When omitted the optimal level is "
+            "computed automatically from each region's median altitude.",
         )
         parser.add_argument(
             "--tile-provider",
@@ -165,6 +166,14 @@ class Runner:
             choices=["esri", "google"],
             help="Map sources (Mandatory for eval/prepare)",
         )
+        parser.add_argument(
+            "--map-margin",
+            type=float,
+            default=0.01,
+            help="Margin in degrees added to dataset bounds for map download "
+            "(default: 0.01 ≈ ~1.1km). Use smaller values like 0.003 "
+            "(≈ ~333m) to reduce download area.",
+        )
 
         args = parser.parse_args()
 
@@ -172,11 +181,6 @@ class Runner:
         eval_ids = self._parse_region_ids(args.dataset_eval)
         summary_ids = self._parse_region_ids(args.eval_summary)
         if prep_ids or eval_ids:
-            if not args.zoom_levels:
-                print(
-                    "ERROR: --zoom-levels is mandatory for preparation and evaluation."
-                )
-                sys.exit(1)
             if not args.tile_provider:
                 print(
                     "ERROR: --tile-provider is mandatory for preparation and evaluation."
@@ -187,8 +191,15 @@ class Runner:
             for i in prep_ids:
                 _logger.info(f"Preparing Region {i}")
                 try:
+                    if args.zoom_levels:
+                        zooms = args.zoom_levels
+                    else:
+                        self.dataset_manager.prepare_shared_dataset(i)
+                        z = self.dataset_manager.auto_zoom_for_region(i)
+                        zooms = [z]
                     self.dataset_manager.prepare_region_data(
-                        i, args.zoom_levels, args.tile_provider
+                        i, zooms, args.tile_provider,
+                        map_margin=args.map_margin
                     )
                 except Exception as e:
                     _logger.info(f"Error during preparation for Region {i}: {e}")
@@ -197,7 +208,22 @@ class Runner:
         if eval_ids:
             for i in eval_ids:
                 for p in args.tile_provider:
-                    for z in args.zoom_levels:
+                    if args.zoom_levels:
+                        zooms = args.zoom_levels
+                    else:
+                        zooms = self.dataset_manager.available_zooms(i, p)
+                        if not zooms:
+                            try:
+                                self.dataset_manager.prepare_shared_dataset(i)
+                                z = self.dataset_manager.auto_zoom_for_region(i)
+                                zooms = [z]
+                            except Exception:
+                                _logger.info(
+                                    f"Cannot determine zoom for Region {i}. "
+                                    f"Use --zoom-levels or run --dataset-prepare first."
+                                )
+                                sys.exit(1)
+                    for z in zooms:
                         try:
                             self.run_dataset_eval(i, z, p)
                         except Exception as e:

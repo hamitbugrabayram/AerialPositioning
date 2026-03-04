@@ -62,7 +62,7 @@ class PositioningConfig:
         device: Compute device (cuda, cpu).
         data_paths: Dictionary of data directory paths.
         preprocessing: Preprocessing configuration.
-        camera_model: Camera model parameters for warping.
+        camera_model: Optional camera intrinsics; None when unavailable.
         matcher_weights: Matcher-specific weight paths.
         matcher_params: Matcher-specific parameters.
         ransac_params: RANSAC configuration.
@@ -117,9 +117,7 @@ class PositioningConfig:
                     "adaptive_yaw": False,
                 },
             ),
-            camera_model=config.get(
-                "camera_model", {"focal_length": 4.5, "hfov_deg": 82.9}
-            ),
+            camera_model=config.get("camera_model"),
             matcher_weights=config.get(
                 "matcher_weights",
                 {
