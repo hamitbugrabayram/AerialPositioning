@@ -162,19 +162,30 @@ class DatasetManager:
 
                 for _, row in df.iterrows():
                     filename = str(row["filename"])
+                    omega = self._get_telemetry_value(row, "Omega")
+                    kappa = self._get_telemetry_value(row, "Kappa")
+                    phi1 = self._get_telemetry_value(row, "Phi1")
+                    phi2 = self._get_telemetry_value(row, "Phi2")
+                    gimbal_roll = kappa
+                    gimbal_pitch = -90.0 + omega
+                    gimbal_yaw_phi1 = phi1
+                    gimbal_yaw_phi2 = phi2
                     query_metadata.append(
                         {
                             "Filename": filename,
                             "Latitude": self._get_telemetry_value(row, "lat"),
                             "Longitude": self._get_telemetry_value(row, "lon"),
                             "Altitude": self._get_telemetry_value(row, "height"),
-                            "Gimball_Roll": self._get_telemetry_value(row, "Kappa"),
-                            "Gimball_Pitch": -90.0
-                            + self._get_telemetry_value(row, "Omega"),
-                            "Gimball_Yaw": 0.0,
-                            "Flight_Roll": 0.0,
-                            "Flight_Pitch": 0.0,
-                            "Flight_Yaw": self._get_telemetry_value(row, "Phi1"),
+                            "Gimball_Roll": gimbal_roll,
+                            "Gimball_Pitch": gimbal_pitch,
+                            "Gimball_Yaw": gimbal_yaw_phi1,
+                            "Gimball_Yaw_Source": "Phi1",
+                            "Gimball_Yaw_Phi1": gimbal_yaw_phi1,
+                            "Gimball_Yaw_Phi2": gimbal_yaw_phi2,
+                            "Omega": omega,
+                            "Kappa": kappa,
+                            "Phi1": phi1,
+                            "Phi2": phi2,
                         }
                     )
 

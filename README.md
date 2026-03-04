@@ -25,7 +25,7 @@ Use Python 3.9 with dependencies from `requirements.txt`. For complete matcher s
 
 ### 2. Dataset and Directory Layout
 
-The default benchmark uses the **[UAV-VisLoc dataset](https://github.com/IntelliSensing/UAV-VisLoc)**. After downloading the archive, extract raw data under `_VisLoc_dataset/` by running:
+The default setup uses the **[UAV-VisLoc dataset](https://github.com/IntelliSensing/UAV-VisLoc)**. After downloading the archive, extract raw data under `_VisLoc_dataset/` by running:
 
 ```bash
 unzip UAV_VisLoc_dataset.zip -d _VisLoc_dataset

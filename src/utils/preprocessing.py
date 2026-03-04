@@ -319,7 +319,7 @@ class QueryPreprocessor:
         Args:
             image: The resized NumPy image.
             metadata: Metadata containing 'Gimball_Yaw', 'Gimball_Pitch',
-                'Gimball_Roll', and 'Flight_Yaw'.
+                and 'Gimball_Roll'.
 
         Returns:
             The warped, top-down NumPy image.
@@ -340,9 +340,7 @@ class QueryPreprocessor:
         gimbal_yaw = float(metadata.get("Gimball_Yaw", 0.0))
         gimbal_pitch = float(metadata.get("Gimball_Pitch", -90.0))
         gimbal_roll = float(metadata.get("Gimball_Roll", 0.0))
-        flight_yaw = float(metadata.get("Flight_Yaw", 0.0))
-
-        current_yaw = gimbal_yaw + flight_yaw
+        current_yaw = gimbal_yaw
         current_pitch = gimbal_pitch
         current_roll = gimbal_roll
 

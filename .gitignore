@@ -79,3 +79,6 @@ Thumbs.db
 *.log
 *.swp
 *~
+
+generate_assets.py
+_archive/

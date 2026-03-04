@@ -297,6 +297,28 @@ class Evaluator(PositioningRunner):
         rel_maps = self._filter_maps_by_reference(
             search_lat, search_lon, self.map_df, radius
         )
+        if not rel_maps.empty:
+            try:
+                center_lats = (
+                    pd.to_numeric(rel_maps["Top_left_lat"], errors="coerce")
+                    + pd.to_numeric(rel_maps["Bottom_right_lat"], errors="coerce")
+                ) / 2.0
+                center_lons = (
+                    pd.to_numeric(rel_maps["Top_left_lon"], errors="coerce")
+                    + pd.to_numeric(rel_maps["Bottom_right_long"], errors="coerce")
+                ) / 2.0
+                distances = self._haversine_np(
+                    search_lat,
+                    search_lon,
+                    center_lats.to_numpy(dtype=float),
+                    center_lons.to_numpy(dtype=float),
+                )
+                rel_maps = rel_maps.assign(_dist_m=distances).sort_values(
+                    by="_dist_m"
+                )
+                rel_maps = rel_maps.drop(columns=["_dist_m"])
+            except Exception:
+                pass
         res.candidate_maps = int(len(rel_maps))
         res_dir = self.output_dir / Path(query_filename).stem
 

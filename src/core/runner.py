@@ -183,7 +183,6 @@ class PositioningRunner:
             "Gimball_Yaw",
             "Gimball_Pitch",
             "Gimball_Roll",
-            "Flight_Yaw",
         ]
         rm = [
             "Filename",

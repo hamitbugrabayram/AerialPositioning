@@ -7,6 +7,8 @@ camera_model:
 
 preprocessing:
   save_processed: false
+  multi_variant:
+    enabled: true
 
 matcher_weights:
   gim_model_type: lightglue
@@ -52,9 +54,18 @@ positioning_params:
   save_visualization: false
   save_frame_sequence: false
   sample_interval: 1
+  map_context:
+    enabled: false
+    mode: half_neighbors
+    edge_pixels: 64
+  pair_logging:
+    enabled: true
+    save_failed: false
+    save_matched: true
+    max_unique_pairs: 400
   adaptive_search:
     initial_radius_m: 1000.0
-    max_radius_m: 10000.0
+    max_radius_m: 4000.0
     growth_factor: 2.0
     cooldown_factor: 0.5
 

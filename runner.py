@@ -86,12 +86,11 @@ class Runner:
         map_dir = dataset_dir / "map" / provider / str(zoom)
 
         if not map_dir.exists():
-            _logger.info(f"\nERROR: Map directory not found: {map_dir}")
-            print(
-                f"HINT: Run '--dataset-prepare {index} --zoom-levels {zoom} "
+            raise RuntimeError(
+                f"Map directory not found: {map_dir}. "
+                f"Run '--dataset-prepare {index} --zoom-levels {zoom} "
                 f"--tile-provider {provider}' first."
             )
-            sys.exit(1)
 
         exp_folder_name = f"{region_name}_{region_id}_zoom_{zoom}_{provider}"
         output_path = self.results_root / exp_folder_name
@@ -101,10 +100,9 @@ class Runner:
                 output_path, query_dir, map_dir, provider
             )
         except Exception as e:
-            print(
-                f"\nERROR: Failed to generate configuration for {exp_folder_name}: {e}"
-            )
-            sys.exit(1)
+            raise RuntimeError(
+                f"Failed to generate configuration for {exp_folder_name}: {e}"
+            ) from e
 
         _logger.info(f"Running: {exp_folder_name}")
 
@@ -120,16 +118,14 @@ class Runner:
         try:
             subprocess.run(cmd, check=True)
         except subprocess.CalledProcessError as e:
-            _logger.info(f"\nERROR: Visual Positioning process failed for {exp_folder_name}")
-            print(
-                f"Details: Command '{' '.join(cmd)}' returned exit status {e.returncode}"
-            )
-            sys.exit(1)
+            raise RuntimeError(
+                f"Visual positioning failed for {exp_folder_name}. "
+                f"Command '{' '.join(cmd)}' returned exit status {e.returncode}."
+            ) from e
         except Exception as e:
-            print(
-                f"\nERROR: An unexpected error occurred while starting the process: {e}"
-            )
-            sys.exit(1)
+            raise RuntimeError(
+                f"Unexpected error while running {exp_folder_name}: {e}"
+            ) from e
 
     def main(self) -> None:
         """Executes CLI flow for dataset preparation, evaluation, and reporting.
@@ -175,7 +171,6 @@ class Runner:
         prep_ids = self._parse_region_ids(args.dataset_prepare)
         eval_ids = self._parse_region_ids(args.dataset_eval)
         summary_ids = self._parse_region_ids(args.eval_summary)
-
         if prep_ids or eval_ids:
             if not args.zoom_levels:
                 print(
@@ -203,7 +198,11 @@ class Runner:
             for i in eval_ids:
                 for p in args.tile_provider:
                     for z in args.zoom_levels:
-                        self.run_dataset_eval(i, z, p)
+                        try:
+                            self.run_dataset_eval(i, z, p)
+                        except Exception as e:
+                            _logger.info(f"Error during evaluation for Region {i}: {e}")
+                            sys.exit(1)
 
         if summary_ids is not None:
             try:
@@ -213,7 +212,11 @@ class Runner:
                 sys.exit(1)
 
         if not any(
-            [args.dataset_prepare, args.dataset_eval, args.eval_summary is not None]
+            [
+                args.dataset_prepare,
+                args.dataset_eval,
+                args.eval_summary is not None,
+            ]
         ):
             parser.print_help()
 
