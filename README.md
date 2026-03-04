@@ -70,7 +70,7 @@ python runner.py --eval-summary all
 *   **Offline Tile Retrieval:** A multi-provider retrieval module pre-downloads and caches georeferenced tiles (ESRI/Google) before runtime.
 *   **Query Preprocessing:** Drone images are resized and perspective-warped to a nadir, north-oriented view using only onboard IMU/gimbal sensor readings (roll, pitch, yaw). No GPS coordinates are used.
 *   **Adaptive Tile Stitching:** Neighbouring satellite tiles are composed into an NxN grid based on barometric altitude and zoom level so the reference image covers the drone's estimated ground footprint.
-*   **Intra-frame Adaptive Exponential Backoff Search:** Given an initial position, the search center tracks the last successful match. If a match fails, the search radius dynamically grows exponentially (e.g., x2.0) *within the same frame* up to a max limit to quickly recover the platform. Upon success, the excess radius cools down toward the initial value for subsequent frames.
+*   **Adaptive Search:** Given an initial position, the search center tracks the last successful match. If a match fails, the frame is skipped and the search radius grows linearly (+200 m per skip, capped at 2000 m). Upon success, the radius resets to the initial value.
 *   **Deep Matching and Geometric Validation:** Transformer-based correspondences (MINIMA SuperPoint+LightGlue) are validated through RANSAC and geometric plausibility constraints.
 
 ### 1. Offline Tile Retrieval
@@ -115,13 +115,13 @@ To avoid overly coarse map detail at high altitude, a detail floor is applied (`
 - Region 11 remains at zoom 16.
 - Region 05 is promoted from base 16 to zoom 17 (empirically the best setting).
 
-### 5. Adaptive Exponential Backoff Search
-The search center is initialized from the platform's known starting position. On each frame, candidate satellite tiles are filtered around the current search center using an **intra-frame adaptive exponential backoff** radius:
+### 5. Adaptive Search
+The search center is initialized from the platform's known starting position. Each frame is attempted **once** at the current search radius:
 
-* **On failure:** the search radius dynamically expands by a growth factor ($r \leftarrow \min(r \cdot f_{grow},\; r_{max})$) and matching is re-attempted *on the same query image* until it succeeds or hits the cap. This allows the system to recover from long GNSS-denied gaps or visual mismatches.
-* **On success:** the search center snaps to the new matched position, and the excess radius above the initial value decays by a cooldown factor ($r \leftarrow r_0 + (r - r_0) \cdot f_{cool}$) for the next frame.
+* **On failure:** the frame is skipped and the radius grows linearly: $r \leftarrow \min(r + p,\; r_{max})$. No retry is performed on the same frame.
+* **On success:** the search center snaps to the matched position and the radius resets to $r_0$.
 
-Default parameters: $r_0 = 1000\text{ m}$, $r_{max} = 4000\text{ m}$, $f_{grow} = 2.0$, $f_{cool} = 0.5$.
+Default parameters: $r_0 = 1000\text{ m}$, $r_{max} = 2000\text{ m}$, $p = 200\text{ m}$ (skip penalty).
 
 ### 6. Deep Matching and Geometric Verification
 Dense or semi-dense correspondences are computed using the MINIMA framework (SuperPoint + LightGlue). A planar homography $H$ between query and reference tile is then estimated via RANSAC. Acceptance is conditioned on stability checks, including a determinant constraint ($|\det H| \approx 1$) for near-rigid behavior, image-boundary consistency of projected corners, and non-degeneracy of the estimated transformation.
@@ -136,7 +136,7 @@ The results reported below correspond to the following setup:
 *   **Zoom Policy:** Auto zoom enabled (`--zoom-levels` omitted during eval).
 *   **Map Context:** Adaptive NxN grid stitching (`coverage_factor=2.0`, `max_grid=3`).
 *   **Temporal Sampling:** `sample_interval=1` (all frames evaluated).
-*   **Search Strategy:** Intra-frame adaptive backoff (`initial=1000m`, `max=4000m`, `growth=2.0`, `cooldown=0.5`).
+*   **Search Strategy:** Skip-and-grow (`initial=1000m`, `max=2000m`, `skip_penalty=200m`).
 *   **Geometric Acceptance:** `min_inliers_for_success=50`.
 
 ### Sensor Data Used at Runtime

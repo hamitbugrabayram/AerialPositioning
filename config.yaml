@@ -59,9 +59,8 @@ positioning_params:
     max_unique_pairs: 400
   adaptive_search:
     initial_radius_m: 1000.0
-    max_radius_m: 4000.0
-    growth_factor: 2.0
-    cooldown_factor: 0.5
+    max_radius_m: 2000.0
+    skip_penalty_m: 200.0
 
 tile_provider:
   name: esri

@@ -24,11 +24,12 @@ _logger = get_logger(__name__)
 class Evaluator(PositioningRunner):
     """Orchestrates visual positioning with adaptive search.
 
-    Uses an exponential backoff strategy for search radius management:
-    on successful match the radius cools down toward the initial value;
-    on failure the radius grows by a configurable factor, up to a hard
-    ceiling. The search center always tracks the last successfully
-    matched position.
+    Uses a skip-and-grow strategy for search radius management:
+    each frame is attempted **once** at the current radius.  On failure
+    the frame is skipped and the radius grows linearly by
+    ``skip_penalty_m`` (capped at ``max_radius_m``).  On success the
+    radius resets to ``initial_radius_m`` and the search center snaps
+    to the matched position.
 
     Attributes:
         full_query_df: Complete query dataframe with all frames.
@@ -37,8 +38,7 @@ class Evaluator(PositioningRunner):
         sample_interval: Number of frames between positioning checkpoints.
         initial_radius_m: Starting radius for adaptive search.
         max_radius_m: Maximum allowed search radius.
-        growth_factor: Multiplier for radius upon match failure.
-        cooldown_factor: Decay factor for radius upon match success.
+        skip_penalty_m: Metres added to radius after each skipped frame.
     """
 
     def __init__(self, config: PositioningConfig):
@@ -62,9 +62,8 @@ class Evaluator(PositioningRunner):
 
         search_conf = self.config.positioning_params.get("adaptive_search", {})
         self.initial_radius_m = float(search_conf.get("initial_radius_m", 1000.0))
-        self.max_radius_m = float(search_conf.get("max_radius_m", 10000.0))
-        self.growth_factor = float(search_conf.get("growth_factor", 1.5))
-        self.cooldown_factor = float(search_conf.get("cooldown_factor", 0.5))
+        self.max_radius_m = float(search_conf.get("max_radius_m", 2000.0))
+        self.skip_penalty_m = float(search_conf.get("skip_penalty_m", 200.0))
 
         self.visualizer = TrajectoryVisualizer(config)
 
@@ -125,17 +124,14 @@ class Evaluator(PositioningRunner):
         _logger.info("Positioning Complete")
 
     def _process_eval_queries(self) -> List[QueryResult]:
-        """Processes sampled frames using adaptive radius search.
+        """Processes sampled frames using skip-and-grow search.
 
-        The algorithm maintains a dynamic search radius that starts at
-        ``initial_radius_m``. After each frame:
+        Each frame is attempted **once** at the current radius:
 
-        * **Success** -- the radius decays toward ``initial_radius_m``
-          by the ``cooldown_factor``, and the search center snaps to the
-          matched position.
-        * **Failure** -- the radius is multiplied by ``growth_factor``
-          (capped at ``max_radius_m``), and the search center remains at
-          the last known position.
+        * **Success** -- the radius resets to ``initial_radius_m`` and
+          the search center snaps to the matched position.
+        * **Failure** -- the frame is skipped and the radius grows by
+          ``skip_penalty_m`` (capped at ``max_radius_m``).
 
         Returns:
             List of sampled-frame query results.
@@ -161,7 +157,7 @@ class Evaluator(PositioningRunner):
         last_match_lat = float(self.sampled_query_df.iloc[0]["Latitude"])
         last_match_lon = float(self.sampled_query_df.iloc[0]["Longitude"])
         current_radius = self.initial_radius_m
-        consecutive_failures = 0
+        consecutive_skips = 0
 
         total_start = time.time()
         total_frames = len(self.sampled_query_df)
@@ -169,60 +165,48 @@ class Evaluator(PositioningRunner):
         for idx, query_row in self.sampled_query_df.iterrows():
             try:
                 idx_int = int(cast(Any, idx))
-                search_lat = last_match_lat
-                search_lon = last_match_lon
 
-                while True:
-                    result = self._match_with_adaptive_radius(
-                        query_row,
-                        idx_int,
-                        temp_dir,
-                        min_inliers,
-                        save_viz,
-                        search_lat,
-                        search_lon,
-                        current_radius,
+                result = self._match_with_adaptive_radius(
+                    query_row,
+                    idx_int,
+                    temp_dir,
+                    min_inliers,
+                    save_viz,
+                    last_match_lat,
+                    last_match_lon,
+                    current_radius,
+                )
+
+                if result.success:
+                    last_match_lat = float(
+                        result.predicted_latitude
+                        if result.predicted_latitude is not None
+                        else last_match_lat
                     )
-
-                    if result.success:
-                        last_match_lat = float(
-                            result.predicted_latitude
-                            if result.predicted_latitude is not None
-                            else search_lat
-                        )
-                        last_match_lon = float(
-                            result.predicted_longitude
-                            if result.predicted_longitude is not None
-                            else search_lon
-                        )
-                        excess = current_radius - self.initial_radius_m
-                        if excess > 0:
-                            current_radius = (
-                                self.initial_radius_m + excess * self.cooldown_factor
-                            )
-                        consecutive_failures = 0
-                        break
-                    else:
-                        consecutive_failures += 1
-                        if current_radius >= self.max_radius_m:
-                            break
-                        
-                        _logger.info(
-                            f"Frame: {idx_int + 1}/{total_frames} failed at "
-                            f"{current_radius:.0f}m. Expanding search radius..."
-                        )
-                        current_radius = min(
-                            current_radius * self.growth_factor, self.max_radius_m
-                        )
+                    last_match_lon = float(
+                        result.predicted_longitude
+                        if result.predicted_longitude is not None
+                        else last_match_lon
+                    )
+                    current_radius = self.initial_radius_m
+                    consecutive_skips = 0
+                else:
+                    consecutive_skips += 1
+                    current_radius = min(
+                        current_radius + self.skip_penalty_m,
+                        self.max_radius_m,
+                    )
 
                 results.append(result)
                 if self.save_frame_sequence:
                     self.visualizer.generate_trajectory_plot(results, frame_idx=idx_int)
 
                 success_count = sum(1 for r in results if r.success)
+                status = "OK" if result.success else "SKIP"
                 _logger.info(
                     f"Frame: {idx_int + 1}/{total_frames} | "
-                    f"Radius: {current_radius:.0f}m | "
+                    f"{status} | Radius: {current_radius:.0f}m | "
+                    f"Skips: {consecutive_skips} | "
                     f"Success: {success_count}/{idx_int + 1}"
                 )
 
@@ -233,6 +217,11 @@ class Evaluator(PositioningRunner):
                         success=False,
                         failure_reason=f"evaluator_exception: {e}",
                     )
+                )
+                consecutive_skips += 1
+                current_radius = min(
+                    current_radius + self.skip_penalty_m,
+                    self.max_radius_m,
                 )
                 continue
 
