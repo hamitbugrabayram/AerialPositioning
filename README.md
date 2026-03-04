@@ -49,15 +49,20 @@ datasets/
 ### 3. Standard Evaluation Commands
 
 ```bash
-# Prepare all regions for multiple providers and zoom levels
-python runner.py --dataset-prepare all --zoom-levels 16 17 --tile-provider esri google
+# Prepare all regions (auto zoom per region)
+python runner.py --dataset-prepare all --tile-provider google
 
-# Evaluate selected region(s)
-python runner.py --dataset-eval 11 --zoom-levels 16 --tile-provider esri
+# Evaluate selected region(s) (auto zoom)
+python runner.py --dataset-eval 5 --tile-provider google
+
+# Optional: force a specific zoom
+python runner.py --dataset-eval 11 --zoom-levels 16 --tile-provider google
 
 # Aggregate reports
 python runner.py --eval-summary all
 ```
+
+`--zoom-levels` is optional for both prepare and eval. If omitted, `runner.py` computes an optimal zoom from each region's median altitude and latitude. During eval, if that zoom is not available on disk, the nearest downloaded zoom is used.
 
 ## Methodology
 
@@ -99,7 +104,18 @@ $$\text{grid} = \min\!\left(\left\lceil \frac{\text{altitude} \times \text{cover
 
 With `max_grid=3`, the composite is 768x768 px (3x3 tiles), which matches the matcher's internal resize target and preserves detail. Missing edge tiles are filled with neutral gray.
 
-### 4. Adaptive Exponential Backoff Search
+### 4. Automatic Zoom Selection
+When `--zoom-levels` is omitted, zoom is selected automatically with:
+
+$$\text{zoom}_{base} = \left\lfloor \log_2\!\left(\frac{\cos(\text{lat})\,2\pi R\,\text{max\_grid}}{\text{altitude}\,\text{coverage\_factor}}\right) \right\rfloor$$
+
+To avoid overly coarse map detail at high altitude, a detail floor is applied (`min_detail_mpp=2.0`, activated for altitude >= 1500 m). This keeps enough texture for matching quality:
+
+- Regions 01/02/03 remain at zoom 18.
+- Region 11 remains at zoom 16.
+- Region 05 is promoted from base 16 to zoom 17 (empirically the best setting).
+
+### 5. Adaptive Exponential Backoff Search
 The search center is initialized from the platform's known starting position. On each frame, candidate satellite tiles are filtered around the current search center using an **intra-frame adaptive exponential backoff** radius:
 
 * **On failure:** the search radius dynamically expands by a growth factor ($r \leftarrow \min(r \cdot f_{grow},\; r_{max})$) and matching is re-attempted *on the same query image* until it succeeds or hits the cap. This allows the system to recover from long GNSS-denied gaps or visual mismatches.
@@ -107,7 +123,7 @@ The search center is initialized from the platform's known starting position. On
 
 Default parameters: $r_0 = 1000\text{ m}$, $r_{max} = 4000\text{ m}$, $f_{grow} = 2.0$, $f_{cool} = 0.5$.
 
-### 5. Deep Matching and Geometric Verification
+### 6. Deep Matching and Geometric Verification
 Dense or semi-dense correspondences are computed using the MINIMA framework (SuperPoint + LightGlue). A planar homography $H$ between query and reference tile is then estimated via RANSAC. Acceptance is conditioned on stability checks, including a determinant constraint ($|\det H| \approx 1$) for near-rigid behavior, image-boundary consistency of projected corners, and non-degeneracy of the estimated transformation.
 
 ## Evaluation Setup
@@ -117,6 +133,7 @@ The results reported below correspond to the following setup:
 *   **Matcher:** MINIMA (SuperPoint + LightGlue).
 *   **Tile Provider:** Google.
 *   **Preprocessing:** Resize + gimbal warp (Phi1 as yaw, estimated K from image dims).
+*   **Zoom Policy:** Auto zoom enabled (`--zoom-levels` omitted during eval).
 *   **Map Context:** Adaptive NxN grid stitching (`coverage_factor=2.0`, `max_grid=3`).
 *   **Temporal Sampling:** `sample_interval=1` (all frames evaluated).
 *   **Search Strategy:** Intra-frame adaptive backoff (`initial=1000m`, `max=4000m`, `growth=2.0`, `cooldown=0.5`).
@@ -136,7 +153,7 @@ No ground-truth GPS coordinates are used during matching or positioning. Altitud
 
 ### Sanity Validation (first 20 frames per region)
 
-| Region (ID) | Zoom | Success Rate | Avg Inliers | Median Error |
+| Region (ID) | Auto Zoom | Success Rate | Avg Inliers | Median Error |
 | :--- | :--- | :--- | :--- | :--- |
 | Changjiang_20 (01) | 18 | **100%** (20/20) | 367 | 23.2 m |
 | Changjiang_23 (02) | 18 | **100%** (20/20) | 453 | 14.4 m |

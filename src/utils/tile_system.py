@@ -10,7 +10,7 @@ Reference:
 
 import re
 from itertools import chain
-from math import atan, cos, exp, floor, log, log2, pi, sin
+from math import atan, ceil, cos, exp, floor, log, log2, pi, sin
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -97,6 +97,8 @@ class TileSystem:
         latitude: float,
         coverage_factor: float = 2.0,
         max_grid: int = 11,
+        min_detail_mpp: float = 2.0,
+        high_altitude_threshold_m: float = 1500.0,
         min_level: int = 15,
         max_level: int = 21,
     ) -> int:
@@ -126,6 +128,12 @@ class TileSystem:
                 ``map_context.coverage_factor``).
             max_grid: Maximum allowed grid dimension (default 11,
                 i.e. up to 11x11 = 2816 px composite).
+            min_detail_mpp: Detail floor in meters-per-pixel used only for
+                high-altitude datasets. If the computed zoom is too coarse
+                (larger m/px than this value), one or more zoom levels are
+                promoted to preserve texture detail.
+            high_altitude_threshold_m: Altitude threshold above which the
+                detail floor check is applied.
             min_level: Lowest zoom level to return.
             max_level: Highest zoom level to return.
 
@@ -145,7 +153,25 @@ class TileSystem:
             return max_level
 
         level = int(floor(log2(numerator / denominator)))
-        return max(min_level, min(level, max_level))
+        level = max(min_level, min(level, max_level))
+
+        if (
+            min_detail_mpp > 0
+            and altitude_m >= high_altitude_threshold_m
+            and level < max_level
+        ):
+            detail_level = int(
+                ceil(
+                    log2(
+                        (cos_lat * 2.0 * pi * TileSystem.EARTH_RADIUS)
+                        / (256.0 * min_detail_mpp)
+                    )
+                )
+            )
+            detail_level = max(min_level, min(detail_level, max_level))
+            level = max(level, detail_level)
+
+        return level
 
     @staticmethod
     def map_scale(lat: float, level: int, screen_dpi: float) -> float:

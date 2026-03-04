@@ -211,18 +211,31 @@ class Runner:
                     if args.zoom_levels:
                         zooms = args.zoom_levels
                     else:
-                        zooms = self.dataset_manager.available_zooms(i, p)
-                        if not zooms:
-                            try:
-                                self.dataset_manager.prepare_shared_dataset(i)
-                                z = self.dataset_manager.auto_zoom_for_region(i)
-                                zooms = [z]
-                            except Exception:
-                                _logger.info(
-                                    f"Cannot determine zoom for Region {i}. "
-                                    f"Use --zoom-levels or run --dataset-prepare first."
-                                )
-                                sys.exit(1)
+                        try:
+                            self.dataset_manager.prepare_shared_dataset(i)
+                            target_zoom = self.dataset_manager.auto_zoom_for_region(i)
+                        except Exception:
+                            _logger.info(
+                                f"Cannot determine zoom for Region {i}. "
+                                f"Use --zoom-levels or run --dataset-prepare first."
+                            )
+                            sys.exit(1)
+
+                        available = self.dataset_manager.available_zooms(i, p)
+                        if not available:
+                            zooms = [target_zoom]
+                        elif target_zoom in available:
+                            zooms = [target_zoom]
+                        else:
+                            nearest = min(
+                                available,
+                                key=lambda z: (abs(z - target_zoom), -z),
+                            )
+                            _logger.info(
+                                f"Region {i:02d} {p}: auto zoom {target_zoom} "
+                                f"not downloaded, using nearest available {nearest}."
+                            )
+                            zooms = [nearest]
                     for z in zooms:
                         try:
                             self.run_dataset_eval(i, z, p)
