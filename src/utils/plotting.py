@@ -32,6 +32,12 @@ class TrajectoryVisualizer:
         assets_dir (Optional[Path]): Directory for saving summary plots.
     """
 
+    _OVERLAY_MAX_SIDE = 4096
+    """Maximum pixel length of the overlay image's longest side."""
+
+    _LEGEND_OPACITY = 0.95
+    """Opacity of the legend background box (0 = transparent, 1 = opaque)."""
+
     def __init__(self, config: PositioningConfig) -> None:
         """Initializes the visualizer with configuration.
 
@@ -259,58 +265,207 @@ class TrajectoryVisualizer:
             return
 
         try:
-            canvas, scale, origin, level = self._prepare_map_canvas()
+            canvas, scale, origin, level = self._prepare_map_canvas(
+                results, frame_idx
+            )
             if canvas is None:
                 return
 
             self._draw_gt_overlay(canvas, results, frame_idx, scale, origin, level)
             self._draw_pred_overlay(canvas, results, scale, origin, level)
             self._draw_markers_and_errors(canvas, results, scale, origin, level)
-            self._add_overlay_legend(canvas, level)
+            self._add_overlay_legend(canvas, results, scale, origin, level)
 
             self._save_overlay_canvas(canvas, frame_idx)
         except Exception as e:
             _logger.info(f"WARNING: Overlay failed: {e}")
 
+    def _collect_trajectory_coords(
+        self,
+        results: List[QueryResult],
+        frame_idx: Optional[int] = None,
+    ) -> Tuple[List[float], List[float]]:
+        """Collects every lat/lon that the overlay needs to show.
+
+        Gathers coordinates from the full ground-truth path and from
+        predicted / GT positions stored in *results*.
+
+        Returns:
+            ``(lats, lons)`` lists.
+        """
+        lats: List[float] = []
+        lons: List[float] = []
+
+        if self.full_query_df is not None:
+            df = self.full_query_df
+            if frame_idx is not None and results:
+                indices = df[
+                    df["Filename"] == results[-1].query_filename
+                ].index
+                if not indices.empty:
+                    df = df.iloc[: int(cast(Any, indices[0])) + 1]
+            for i in range(len(df)):
+                lats.append(float(df.iloc[i]["Latitude"]))
+                lons.append(float(df.iloc[i]["Longitude"]))
+
+        for r in results:
+            if r.gt_latitude is not None and r.gt_longitude is not None:
+                lats.append(float(r.gt_latitude))
+                lons.append(float(r.gt_longitude))
+            if (
+                r.success
+                and r.predicted_latitude is not None
+                and r.predicted_longitude is not None
+            ):
+                lats.append(float(r.predicted_latitude))
+                lons.append(float(r.predicted_longitude))
+
+        return lats, lons
+
+    @staticmethod
+    def _find_safe_tile_rect(
+        tile_index: dict,
+        t_left: int,
+        t_right: int,
+        t_top: int,
+        t_bottom: int,
+    ) -> Tuple[int, int, int, int]:
+        """Trims a tile rectangle until every cell has a tile.
+
+        Iteratively removes the edge (left / right / top / bottom)
+        that contains the most missing tiles until the remaining
+        rectangle is fully covered.
+
+        Returns:
+            ``(t_left, t_right, t_top, t_bottom)`` of the safe rect.
+        """
+        max_iter = (t_right - t_left) + (t_bottom - t_top) + 2
+        for _ in range(max_iter):
+            if t_left > t_right or t_top > t_bottom:
+                break
+            missing_left = sum(
+                1 for ty in range(t_top, t_bottom + 1)
+                if (t_left, ty) not in tile_index
+            )
+            missing_right = sum(
+                1 for ty in range(t_top, t_bottom + 1)
+                if (t_right, ty) not in tile_index
+            )
+            missing_top = sum(
+                1 for tx in range(t_left, t_right + 1)
+                if (tx, t_top) not in tile_index
+            )
+            missing_bottom = sum(
+                1 for tx in range(t_left, t_right + 1)
+                if (tx, t_bottom) not in tile_index
+            )
+            worst = max(missing_left, missing_right, missing_top, missing_bottom)
+            if worst == 0:
+                break
+            if missing_left == worst:
+                t_left += 1
+            elif missing_right == worst:
+                t_right -= 1
+            elif missing_top == worst:
+                t_top += 1
+            else:
+                t_bottom -= 1
+        return t_left, t_right, t_top, t_bottom
+
     def _prepare_map_canvas(
         self,
+        results: List[QueryResult],
+        frame_idx: Optional[int] = None,
     ) -> Tuple[Optional[np.ndarray], float, Tuple[int, int], int]:
-        """Creates the base map canvas from satellite tiles."""
+        """Creates a map canvas covering the full available tile grid.
+
+        The canvas dimensions preserve the aspect ratio of the tile
+        coverage with the longest side scaled to
+        ``_OVERLAY_MAX_SIDE``.  Only tiles that actually exist are
+        rendered — no black gaps and no repeated edge tiles.
+        """
         if self.map_df is None:
             return None, 0.0, (0, 0), 0
+
+        level = int(cast(Any, self.map_df.iloc[0])["Level"])
+
+        map_dir = Path(self.config.data_paths["map_dir"])
+        provider = str(self.config.tile_provider.get("name", "google"))
+
+        tile_index: dict = {}
+        for _, m_row in self.map_df.iterrows():
+            tx, ty = int(m_row["TileX"]), int(m_row["TileY"])
+            tile_index[(tx, ty)] = str(m_row["Filename"])
+
         min_tx = int(cast(Any, self.map_df["TileX"]).min())
         max_tx = int(cast(Any, self.map_df["TileX"]).max())
         min_ty = int(cast(Any, self.map_df["TileY"]).min())
         max_ty = int(cast(Any, self.map_df["TileY"]).max())
-        level = int(cast(Any, self.map_df.iloc[0])["Level"])
 
-        full_w, full_h = (max_tx - min_tx + 1) * 256, (max_ty - min_ty + 1) * 256
-        scale = (
-            min(1.0, 4096 / float(max(full_w, full_h)))
-            if max(full_w, full_h) > 0
-            else 1.0
+        for ty in range(min_ty, max_ty + 1):
+            for tx in range(min_tx, max_tx + 1):
+                if (tx, ty) not in tile_index:
+                    fname = f"tile_{provider}_{level}_{tx}_{ty}.jpg"
+                    if (map_dir / fname).exists():
+                        tile_index[(tx, ty)] = fname
+
+        min_tx, max_tx, min_ty, max_ty = self._find_safe_tile_rect(
+            tile_index, min_tx, max_tx, min_ty, max_ty
         )
-        tw, th = int(full_w * scale), int(full_h * scale)
 
-        canvas = np.zeros((th, tw, 3), dtype=np.uint8)
-        map_dir = Path(self.config.data_paths["map_dir"])
+        cov_px_l = min_tx * 256
+        cov_px_t = min_ty * 256
+        cov_px_r = (max_tx + 1) * 256
+        cov_px_b = (max_ty + 1) * 256
+        cov_w = cov_px_r - cov_px_l
+        cov_h = cov_px_b - cov_px_t
 
-        for _, m_row in self.map_df.iterrows():
-            tile_img = cv2.imread(str(map_dir / str(m_row["Filename"])))
-            if tile_img is None:
-                continue
-            tx, ty = int(m_row["TileX"]), int(m_row["TileY"])
-            x1, y1 = int((tx - min_tx) * 256 * scale), int((ty - min_ty) * 256 * scale)
-            x2, y2 = (
-                int((tx - min_tx + 1) * 256 * scale),
-                int((ty - min_ty + 1) * 256 * scale),
-            )
-            if x2 - x1 > 0 and y2 - y1 > 0:
-                tile_res = cv2.resize(tile_img, (x2 - x1, y2 - y1))
-                h_fit, w_fit = min(y2 - y1, th - y1), min(x2 - x1, tw - x1)
-                canvas[y1 : y1 + h_fit, x1 : x1 + w_fit] = tile_res[:h_fit, :w_fit]
+        if cov_w <= 0 or cov_h <= 0:
+            return None, 0.0, (0, 0), 0
 
-        origin = TileSystem.tile_xy_to_pixel_xy(min_tx, min_ty)
+        longest = max(cov_w, cov_h)
+        scale = float(self._OVERLAY_MAX_SIDE) / float(longest)
+        canvas_w = round(cov_w * scale)
+        canvas_h = round(cov_h * scale)
+
+        canvas = np.zeros((canvas_h, canvas_w, 3), dtype=np.uint8)
+
+        for ty in range(min_ty, max_ty + 1):
+            for tx in range(min_tx, max_tx + 1):
+                fname = tile_index.get((tx, ty))
+                if fname is None:
+                    continue
+                tile_img = cv2.imread(str(map_dir / fname))
+                if tile_img is None:
+                    continue
+
+                gx1, gy1 = tx * 256, ty * 256
+                gx2, gy2 = gx1 + 256, gy1 + 256
+
+                cx1 = round((gx1 - cov_px_l) * scale)
+                cy1 = round((gy1 - cov_px_t) * scale)
+                cx2 = round((gx2 - cov_px_l) * scale)
+                cy2 = round((gy2 - cov_px_t) * scale)
+
+                tw, th = cx2 - cx1, cy2 - cy1
+                if tw <= 0 or th <= 0:
+                    continue
+
+                dcx1 = max(0, cx1)
+                dcy1 = max(0, cy1)
+                dcx2 = min(canvas_w, cx2)
+                dcy2 = min(canvas_h, cy2)
+                if dcx2 <= dcx1 or dcy2 <= dcy1:
+                    continue
+
+                tile_res = cv2.resize(tile_img, (tw, th))
+                sx1, sy1 = dcx1 - cx1, dcy1 - cy1
+                w_fit, h_fit = dcx2 - dcx1, dcy2 - dcy1
+                canvas[dcy1:dcy2, dcx1:dcx2] = (
+                    tile_res[sy1 : sy1 + h_fit, sx1 : sx1 + w_fit]
+                )
+
+        origin = (cov_px_l, cov_px_t)
         return canvas, scale, origin, level
 
     def _get_px(
@@ -459,26 +614,76 @@ class TrajectoryVisualizer:
             cv2.circle(canvas, p_pred, 18, (255, 255, 255), -1)
             cv2.circle(canvas, p_pred, 13, (255, 0, 0), -1)
 
-    def _add_overlay_legend(self, canvas: np.ndarray, level: int) -> None:
-        """Adds text legend to the map overlay."""
+    def _add_overlay_legend(
+        self,
+        canvas: np.ndarray,
+        results: List[QueryResult],
+        scale: float,
+        origin: Tuple[int, int],
+        level: int,
+    ) -> None:
+        """Adds a compact legend in a semi-transparent box.
+
+        The box is placed at the corner furthest from the trajectory
+        centroid so it does not obscure the main content.  Only the
+        region identifier and tile provider are shown.
+        """
+        h, w = canvas.shape[:2]
+        s = max(h, w) / 4096.0
+
+        output_dir = Path(self.config.data_paths.get("output_dir", ""))
+        exp_name = output_dir.name
+        if "_zoom_" in exp_name:
+            region_id = exp_name.split("_zoom_")[0].replace("_", " ")
+        else:
+            region_id = exp_name.replace("_", " ")
+
         provider = str(self.config.tile_provider.get("name", "Unknown")).upper()
-        texts = [
-            (f"Map Provider: {provider}", (255, 255, 255)),
-            (f"Zoom Level: {level}", (255, 255, 255)),
-            ("Ground Truth Path", (0, 165, 255)),
-            ("Predicted Path", (255, 0, 0)),
-            ("Error Line", (0, 0, 255)),
-            ("Failed Match (X)", (0, 0, 255)),
+
+        lines = [
+            f"Region: {region_id}",
+            f"Provider: {provider} z{level}",
         ]
-        for i, (text, color) in enumerate(texts):
-            self._draw_text(
-                canvas,
-                text,
-                (40, 100 + i * 90),
-                2.5 if i == 0 else 1.8,
-                color,
-                6 if i == 0 else 4,
+
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 2.0 * s
+        thickness = max(1, int(5 * s))
+        line_gap = int(26 * s)
+        pad_x = int(32 * s)
+        pad_y = int(26 * s)
+
+        sizes = [cv2.getTextSize(t, font, font_scale, thickness) for t in lines]
+        text_ws = [sz[0][0] for sz in sizes]
+        text_hs = [sz[0][1] for sz in sizes]
+
+        box_w = max(text_ws) + 2 * pad_x
+        box_h = sum(text_hs) + (len(lines) - 1) * line_gap + 2 * pad_y
+
+        margin = int(24 * s)
+        box_x = margin
+        box_y = margin
+
+        bx1 = max(0, box_x)
+        by1 = max(0, box_y)
+        bx2 = min(w, box_x + box_w)
+        by2 = min(h, box_y + box_h)
+        if bx2 > bx1 and by2 > by1:
+            roi = canvas[by1:by2, bx1:bx2].copy()
+            dark = np.zeros_like(roi)
+            dark[:] = (30, 30, 30)
+            alpha = self._LEGEND_OPACITY
+            cv2.addWeighted(dark, alpha, roi, 1.0 - alpha, 0, roi)
+            canvas[by1:by2, bx1:bx2] = roi
+
+        y_cursor = box_y + pad_y + text_hs[0]
+        for i, text in enumerate(lines):
+            pos = (box_x + pad_x, y_cursor)
+            cv2.putText(
+                canvas, text, pos, font, font_scale,
+                (255, 255, 255), thickness, cv2.LINE_AA,
             )
+            if i < len(lines) - 1:
+                y_cursor += text_hs[i + 1] + line_gap
 
     def _draw_text(
         self,

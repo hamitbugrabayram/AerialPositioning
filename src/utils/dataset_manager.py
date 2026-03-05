@@ -5,6 +5,7 @@ preparation, and configuration of drone and satellite imagery datasets.
 """
 
 
+import math
 import os
 import shutil
 from pathlib import Path
@@ -318,7 +319,7 @@ class DatasetManager:
         index: int,
         zoom_levels: List[int],
         provider_names: List[str],
-        map_margin: float = 0.01,
+        map_margin_m: float = 1100.0,
     ) -> None:
         """Prepares map tiles for a region across multiple zooms and providers.
 
@@ -326,8 +327,8 @@ class DatasetManager:
             index (int): The integer index of the region.
             zoom_levels (List[int]): List of zoom levels to download.
             provider_names (List[str]): List of tile provider names to use.
-            map_margin (float): Margin in degrees added to dataset bounds
-                for map tile download. Default is 0.01 (~1.1km).
+            map_margin_m (float): Margin in meters added around dataset
+                bounds for map tile download. Default is 1100 m.
         """
         dataset_dir = self.prepare_shared_dataset(index)
         region_id = f"{index:02d}"
@@ -341,34 +342,35 @@ class DatasetManager:
                 map_dir = dataset_dir / "map" / provider / str(zoom)
                 os.makedirs(str(map_dir), exist_ok=True)
 
-                if not (map_dir / "map.csv").exists():
-                    lats = df["Latitude"].tolist()
-                    lons = df["Longitude"].tolist()
-                    margin = map_margin
+                lats = df["Latitude"].tolist()
+                lons = df["Longitude"].tolist()
+                margin_km = max(0.0, float(map_margin_m)) / 1000.0
+                margin_lat_deg = margin_km / 111.32
+                mean_lat = (max(lats) + min(lats)) / 2.0
+                cos_lat = max(1e-6, abs(math.cos(math.radians(mean_lat))))
+                margin_lon_deg = margin_km / (111.32 * cos_lat)
 
-                    lat_max = max(lats) + margin
-                    lon_min = min(lons) - margin
-                    lat_min = min(lats) - margin
-                    lon_max = max(lons) + margin
+                lat_max = max(lats) + margin_lat_deg
+                lon_min = min(lons) - margin_lon_deg
+                lat_min = min(lats) - margin_lat_deg
+                lon_max = max(lons) + margin_lon_deg
 
-                    print(
-                        f"  Fetching {provider.upper()} tiles for "
-                        f"Region {region_id} Zoom {zoom}..."
+                print(
+                    f"  Syncing {provider.upper()} tiles for "
+                    f"Region {region_id} Zoom {zoom}..."
+                )
+
+                tiles = TileSystem.retrieve_map_tiles(
+                    lat_max,
+                    lon_min,
+                    lat_min,
+                    lon_max,
+                    zoom,
+                    str(map_dir),
+                    provider_name=provider,
+                )
+
+                if tiles:
+                    pd.DataFrame(tiles).to_csv(
+                        str(map_dir / "map.csv"), index=False
                     )
-
-                    tiles = TileSystem.retrieve_map_tiles(
-                        lat_max,
-                        lon_min,
-                        lat_min,
-                        lon_max,
-                        zoom,
-                        str(map_dir),
-                        provider_name=provider,
-                    )
-
-                    if tiles:
-                        pd.DataFrame(tiles).to_csv(
-                            str(map_dir / "map.csv"), index=False
-                        )
-                else:
-                    _logger.info(f"  Maps already exist: {map_dir}")

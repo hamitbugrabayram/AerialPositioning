@@ -169,12 +169,11 @@ class Runner:
         parser.add_argument(
             "--map-margin",
             type=float,
-            default=0.01,
-            help="Margin in degrees added to dataset bounds for map download "
-            "(default: 0.01 ≈ ~1.1km). Use smaller values like 0.003 "
-            "(≈ ~333m) to reduce download area.",
+            default=1000.0,
+            help="Extra download margin around dataset GT bounds in meters "
+            "(default: 1000). Example: --map-margin 1000 downloads "
+            "~1 km beyond the dataset bbox.",
         )
-
         args = parser.parse_args()
 
         prep_ids = self._parse_region_ids(args.dataset_prepare)
@@ -199,7 +198,7 @@ class Runner:
                         zooms = [z]
                     self.dataset_manager.prepare_region_data(
                         i, zooms, args.tile_provider,
-                        map_margin=args.map_margin
+                        map_margin_m=args.map_margin,
                     )
                 except Exception as e:
                     _logger.info(f"Error during preparation for Region {i}: {e}")

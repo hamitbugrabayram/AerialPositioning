@@ -44,20 +44,27 @@ class PositioningEngine:
         self._query_variants_cache: Dict[str, list[Tuple[Path, Tuple[int, ...]]]] = {}
 
     def _pair_logging_config(self) -> Dict[str, Any]:
-        """Returns normalized pair logging configuration."""
+        """Returns normalised pair-logging configuration.
+
+        Reads the ``pair_logging`` key from ``positioning_params``.
+        Accepts a plain *bool* for quick toggling or a *dict* with
+        ``enabled``, ``save_failed``, and ``save_matched`` keys.
+
+        Falls back to the legacy ``failed_pair_logging`` key when the
+        modern key is absent.
+
+        Returns:
+            Dictionary with ``enabled``, ``save_failed``, and
+            ``save_matched`` boolean values.
+        """
         pair_cfg = self.config.positioning_params.get("pair_logging", {})
         if isinstance(pair_cfg, bool):
             return {"enabled": pair_cfg, "save_failed": True, "save_matched": True}
         if isinstance(pair_cfg, dict) and pair_cfg:
-            try:
-                max_unique_pairs = int(pair_cfg.get("max_unique_pairs", 0))
-            except Exception:
-                max_unique_pairs = 0
             return {
                 "enabled": bool(pair_cfg.get("enabled", False)),
                 "save_failed": bool(pair_cfg.get("save_failed", True)),
                 "save_matched": bool(pair_cfg.get("save_matched", True)),
-                "max_unique_pairs": max_unique_pairs,
             }
 
         legacy_cfg = self.config.positioning_params.get("failed_pair_logging", {})
@@ -69,7 +76,6 @@ class PositioningEngine:
             "enabled": enabled,
             "save_failed": True,
             "save_matched": False,
-            "max_unique_pairs": 0,
         }
 
     def _should_log_pair(self, status: str) -> bool:
@@ -108,10 +114,6 @@ class PositioningEngine:
 
         key = f"{query_path.name}|{map_path.name}"
         if key in self._pair_log_cache:
-            return
-
-        max_pairs = int(self._pair_logging_config().get("max_unique_pairs", 0))
-        if max_pairs > 0 and len(self._pair_log_cache) >= max_pairs:
             return
 
         pair_dir = Path(self.config.data_paths["output_dir"]) / "pair_logs"
@@ -533,6 +535,14 @@ class PositioningEngine:
     ) -> Optional[Dict[str, Any]]:
         """Matches a query image against a specific satellite tile.
 
+        Tries every preprocessed variant of the query against the
+        (optionally context-expanded) map tile.  Returns the best
+        match summary when RANSAC succeeds and positioning is valid.
+
+        The returned dictionary includes rich geometry data
+        (``homography``, ``effective_map_metadata``, ``query_shape``,
+        ``map_shape``) consumed by ``CompositeFrameRenderer``.
+
         Args:
             query_path: Query image path.
             query_shape: Query image shape.
@@ -543,7 +553,7 @@ class PositioningEngine:
             save_viz: Whether to save match visualizations.
 
         Returns:
-            Match summary dictionary if successful, otherwise `None`.
+            Match summary dictionary if successful, otherwise ``None``.
         """
         map_filename = str(map_row["Filename"])
         if self.pipeline is None:
@@ -657,6 +667,15 @@ class PositioningEngine:
             "pred_lat": pos_res["pred_lat"],
             "pred_lon": pos_res["pred_lon"],
             "error_meters": pos_res["error_meters"],
+            "homography": match_results.get("homography"),
+            "effective_map_metadata": effective_map_row,
+            "query_shape": best_variant_shape,
+            "map_shape": map_img.shape,
+            "query_variant_path": str(best_variant_path),
+            "mkpts0": match_results.get("mkpts0"),
+            "mkpts1": match_results.get("mkpts1"),
+            "inliers_mask": inliers_mask,
+            "map_match_path": str(map_match_path),
         }
 
     def compute_positioning(

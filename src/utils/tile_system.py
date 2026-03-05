@@ -9,8 +9,10 @@ Reference:
 
 
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from itertools import chain
 from math import atan, ceil, cos, exp, floor, log, log2, pi, sin
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -365,25 +367,15 @@ class TileSystem:
             f"{upper_left_tile} to {lower_right_tile}..."
         )
 
+        missing_tiles: List[Tuple[int, int, Path]] = []
+
         for y in y_range:
             for x in x_range:
                 filename = f"tile_{provider_name}_{level}_{x}_{y}.jpg"
                 file_path = output_dir_path / filename
 
                 if not file_path.exists():
-                    try:
-                        image = provider.download_tile(x, y, level)
-                        if image is not None:
-                            if image.shape[:2] == (256, 256):
-                                cv2.imwrite(str(file_path), image)
-                            else:
-                                image = cv2.resize(image, (256, 256))
-                                cv2.imwrite(str(file_path), image)
-                    except Exception as e:
-                        print(
-                            f"CRITICAL: Failed to download tile {x},{y} at level {level}: {e}"
-                        )
-                        raise
+                    missing_tiles.append((x, y, file_path))
 
                 lat1, lon1, lat2, lon2 = TileSystem.get_tile_bounds(x, y, level)
                 quad_key = TileSystem.tile_xy_to_quadkey(x, y, level)
@@ -402,6 +394,41 @@ class TileSystem:
                         "Provider": provider_name,
                     }
                 )
+
+        def _download_and_save(x: int, y: int, file_path: Path) -> None:
+            image = provider.download_tile(x, y, level)
+            if image is None:
+                return
+            if image.shape[:2] != (256, 256):
+                image = cv2.resize(image, (256, 256))
+            cv2.imwrite(str(file_path), image)
+
+        if missing_tiles:
+            provider_key = provider_name.upper()
+            provider_default = "10" if provider_name.lower() == "google" else "20"
+            workers_raw = os.getenv(
+                f"TILE_DOWNLOAD_WORKERS_{provider_key}",
+                os.getenv("TILE_DOWNLOAD_WORKERS", provider_default),
+            )
+            try:
+                workers = max(1, int(workers_raw))
+            except ValueError:
+                workers = int(provider_default)
+            workers = min(workers, len(missing_tiles))
+            print(
+                f"Downloading {len(missing_tiles)} missing tiles with {workers} workers..."
+            )
+            with ThreadPoolExecutor(max_workers=workers) as ex:
+                futures = [
+                    ex.submit(_download_and_save, x, y, file_path)
+                    for x, y, file_path in missing_tiles
+                ]
+                for fut in as_completed(futures):
+                    try:
+                        fut.result()
+                    except Exception as e:
+                        print(f"CRITICAL: Parallel tile download failed: {e}")
+                        raise
 
         return tiles_metadata
 
