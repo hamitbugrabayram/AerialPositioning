@@ -37,6 +37,7 @@ class LightGluePipeline(BaseMatcher):
     Attributes:
         extractor (Any): The feature extractor instance (SuperPoint or DISK).
         matcher (Any): The LightGlue matcher instance.
+
     """
 
     SUPPORTED_FEATURES = ("superpoint", "disk")
@@ -46,6 +47,7 @@ class LightGluePipeline(BaseMatcher):
 
         Args:
             config (Dict[str, Any]): Configuration dictionary containing matcher parameters.
+
         """
         super().__init__(config)
         self._device = torch.device(self.device)
@@ -86,6 +88,7 @@ class LightGluePipeline(BaseMatcher):
 
         Returns:
             Optional[torch.Tensor]: Loaded image tensor, or None if failed.
+
         """
         try:
             image = load_image(image_path)
@@ -105,6 +108,7 @@ class LightGluePipeline(BaseMatcher):
 
         Returns:
             Dict[str, Any]: Dictionary containing match results.
+
         """
         start_time = time.time()
         results = self._create_empty_result()

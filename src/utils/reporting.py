@@ -22,6 +22,7 @@ class ReportGenerator:
         project_root (Path): Repository root directory.
         results_root (Path): Root directory that contains experiment outputs.
         summary_md (Path): Path to the generated markdown report.
+
     """
 
     def __init__(self, project_root: Path, results_root: Path):
@@ -30,6 +31,7 @@ class ReportGenerator:
         Args:
             project_root: Repository root directory.
             results_root: Root directory that contains experiment outputs.
+
         """
         self.project_root = project_root
         self.results_root = results_root
@@ -43,6 +45,7 @@ class ReportGenerator:
 
         Returns:
             Dictionary containing `region_id`, `zoom`, and `provider`.
+
         """
         region_id: Optional[int] = None
         zoom: Optional[int] = None
@@ -72,6 +75,7 @@ class ReportGenerator:
 
         Returns:
             Parsed config fields used in reporting.
+
         """
         config_path = exp_dir / "config.yaml"
         if not config_path.exists():
@@ -97,6 +101,7 @@ class ReportGenerator:
 
         Returns:
             Path to `positioning_results.csv` or `None` if not found.
+
         """
         candidate = exp_dir / "positioning_results.csv"
         if candidate.exists():
@@ -116,6 +121,7 @@ class ReportGenerator:
         Returns:
             Aggregated experiment metrics dictionary, or `None` if no valid
             results file exists.
+
         """
         csv_path = self._find_results_csv(exp_dir)
         if csv_path is None:
@@ -175,6 +181,7 @@ class ReportGenerator:
 
             Returns:
                 The same value when finite, otherwise `nan`.
+
             """
             return value if not math.isnan(value) else float("nan")
 
@@ -228,6 +235,7 @@ class ReportGenerator:
 
         Returns:
             Human-readable string representation.
+
         """
         if value is None:
             return "N/A"
@@ -245,6 +253,7 @@ class ReportGenerator:
 
         Returns:
             List of markdown lines.
+
         """
         now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         lines: List[str] = [
@@ -370,6 +379,7 @@ class ReportGenerator:
         Args:
             region_ids: Optional region filter list. If provided, only matching
                 regions are included in report outputs.
+
         """
         if not self.results_root.exists():
             _logger.info("No results directory found.")

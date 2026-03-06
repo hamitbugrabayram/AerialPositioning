@@ -34,6 +34,7 @@ class MatchResult:
         time_taken: Total execution time in seconds.
         success: Whether a valid homography was found.
         mconf: Match confidence scores for each point pair.
+
     """
 
     mkpts0: np.ndarray
@@ -61,6 +62,7 @@ class BaseMatcher(ABC):
         ransac_thresh (float): RANSAC reprojection threshold.
         ransac_conf (float): RANSAC confidence level.
         ransac_iter (int): Maximum RANSAC iterations.
+
     """
 
     def __init__(self, config: Dict[str, Any]):
@@ -69,6 +71,7 @@ class BaseMatcher(ABC):
         Args:
             config (Dict[str, Any]): Configuration dictionary containing matcher and
                 RANSAC parameters.
+
         """
         self.config = config
         requested_device = str(config.get("device", "cuda")).lower()
@@ -112,6 +115,7 @@ class BaseMatcher(ABC):
                 - homography: Estimated homography matrix
                 - time: Processing time in seconds
                 - success: Whether matching succeeded
+
         """
 
     def _create_empty_result(self) -> Dict[str, Any]:
@@ -119,6 +123,7 @@ class BaseMatcher(ABC):
 
         Returns:
             Dict[str, Any]: Dictionary with empty arrays and failure status.
+
         """
         return {
             "mkpts0": np.array([]),
@@ -142,6 +147,7 @@ class BaseMatcher(ABC):
             results (Dict[str, Any]): Result dictionary to update in-place.
             homography (Optional[np.ndarray]): Estimated homography matrix or None.
             inlier_mask (np.ndarray): Boolean mask of inlier matches.
+
         """
         if homography is not None:
             results["homography"] = homography
@@ -161,6 +167,7 @@ class BaseMatcher(ABC):
             Tuple[Optional[np.ndarray], np.ndarray]: Tuple containing:
                 - 3x3 homography matrix or None if estimation failed
                 - Boolean inlier mask array
+
         """
         if len(mkpts0) < 4:
             return None, np.zeros(len(mkpts0), dtype=bool)
@@ -210,6 +217,7 @@ class BaseMatcher(ABC):
 
         Returns:
             bool: True if visualization was saved successfully, False otherwise.
+
         """
         try:
             from src.utils.visualization import create_match_visualization

@@ -39,6 +39,7 @@ class TileSystem:
         MAX_LON: Maximum longitude supported by the projection.
         MAX_LEVEL: Maximum zoom level supported.
         DEFAULT_PROVIDER: Default satellite imagery provider.
+
     """
 
     EARTH_RADIUS = 6378137
@@ -58,6 +59,7 @@ class TileSystem:
 
         Returns:
             The clipped value.
+
         """
         return min(max(val, min_val), max_val)
 
@@ -70,6 +72,7 @@ class TileSystem:
 
         Returns:
             Map size in pixels (width = height).
+
         """
         return 256 << level
 
@@ -83,6 +86,7 @@ class TileSystem:
 
         Returns:
             Ground resolution in meters per pixel.
+
         """
         lat = TileSystem.clip(lat, TileSystem.MIN_LAT, TileSystem.MAX_LAT)
         return (
@@ -141,6 +145,7 @@ class TileSystem:
 
         Returns:
             Integer zoom level clamped to [min_level, max_level].
+
         """
         if altitude_m <= 0:
             return max_level
@@ -186,6 +191,7 @@ class TileSystem:
 
         Returns:
             Map scale denominator.
+
         """
         return TileSystem.ground_resolution(lat, level) * screen_dpi / 0.0254
 
@@ -200,6 +206,7 @@ class TileSystem:
 
         Returns:
             Tuple of (pixel_x, pixel_y).
+
         """
         lat = TileSystem.clip(lat, TileSystem.MIN_LAT, TileSystem.MAX_LAT)
         lon = TileSystem.clip(lon, TileSystem.MIN_LON, TileSystem.MAX_LON)
@@ -226,6 +233,7 @@ class TileSystem:
 
         Returns:
             Tuple of (latitude, longitude) in degrees.
+
         """
         size = TileSystem.map_size(level)
         x = TileSystem.clip(pixel_x, 0, size - 1) / size - 0.5
@@ -244,6 +252,7 @@ class TileSystem:
 
         Returns:
             Tuple of (tile_x, tile_y).
+
         """
         return int(floor(pixel_x / 256)), int(floor(pixel_y / 256))
 
@@ -257,6 +266,7 @@ class TileSystem:
 
         Returns:
             Tuple of (pixel_x, pixel_y) for the tile's upper-left corner.
+
         """
         return tile_x * 256, tile_y * 256
 
@@ -271,6 +281,7 @@ class TileSystem:
 
         Returns:
             QuadKey string.
+
         """
         tile_x_bits = "{0:0{1}b}".format(tile_x, level)
         tile_y_bits = "{0:0{1}b}".format(tile_y, level)
@@ -286,6 +297,7 @@ class TileSystem:
 
         Returns:
             Tuple of (tile_x, tile_y).
+
         """
         quadkey_binary = "".join(["{0:02b}".format(int(num)) for num in quadkey])
         tile_x = int(quadkey_binary[1::2], 2)
@@ -307,6 +319,7 @@ class TileSystem:
 
         Returns:
             Tuple of (lat1, lon1, lat2, lon2) representing NW and SE corners.
+
         """
         pixel_x1, pixel_y1 = TileSystem.tile_xy_to_pixel_xy(tile_x, tile_y)
         pixel_x2, pixel_y2 = pixel_x1 + 256, pixel_y1 + 256
@@ -327,6 +340,7 @@ class TileSystem:
 
         Returns:
             Image as numpy array, or None if download failed.
+
         """
         tile_x, tile_y = TileSystem.quadkey_to_tile_xy(quad_key)
         level = len(quad_key)
@@ -352,6 +366,7 @@ class TileSystem:
 
         Returns:
             List of metadata dictionaries for each downloaded tile.
+
         """
         tiles_metadata = []
         x_range = range(upper_left_tile[0], lower_right_tile[0] + 1)
@@ -475,6 +490,7 @@ class TileSystem:
 
         Returns:
             List of metadata dictionaries for each tile.
+
         """
         print(
             f"Retrieving {provider_name.upper()} tiles for bbox: "

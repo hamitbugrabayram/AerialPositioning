@@ -30,6 +30,7 @@ class PositioningEngine:
             config: The positioning configuration.
             pipeline: The initialized matcher pipeline.
             preprocessor: The image preprocessor.
+
         """
         self.config = config
         self.pipeline = pipeline
@@ -57,6 +58,7 @@ class PositioningEngine:
         Returns:
             Dictionary with ``enabled``, ``save_failed``,
             ``save_matched``, and ``max_unique_pairs``.
+
         """
         pair_cfg = self.config.positioning_params.get("pair_logging", {})
         if isinstance(pair_cfg, bool):
@@ -308,6 +310,7 @@ class PositioningEngine:
 
         Returns:
             Odd integer grid size (1, 3, 5, ...).
+
         """
         map_ctx = self.config.positioning_params.get("map_context", {})
         max_grid = 5
@@ -351,6 +354,7 @@ class PositioningEngine:
         Returns:
             Tuple containing context image path, context image array,
             and effective map metadata matching the composed view.
+
         """
         if grid_size < 1:
             grid_size = 1
@@ -448,6 +452,7 @@ class PositioningEngine:
             query_row: Optional query metadata row.  When provided,
                 altitude and latitude are read to compute the adaptive
                 grid size.  Falls back to a 3x3 grid when absent.
+
         """
         map_filename = str(map_row["Filename"])
         map_path = Path(self.config.data_paths["map_dir"]) / map_filename
@@ -492,6 +497,7 @@ class PositioningEngine:
 
         Returns:
             None.
+
         """
         self.haversine_distance = haversine
         self.calculate_predicted_gps = predicted_gps
@@ -509,6 +515,7 @@ class PositioningEngine:
 
         Returns:
             A tuple of `(path_for_matcher, query_shape)`.
+
         """
         query_key = str(query_row.get("Filename", query_path.name))
 
@@ -590,6 +597,7 @@ class PositioningEngine:
 
         Returns:
             Match summary dictionary if successful, otherwise ``None``.
+
         """
         map_filename = str(map_row["Filename"])
         if self.pipeline is None:
@@ -735,6 +743,7 @@ class PositioningEngine:
 
         Returns:
             Positioning result dictionary with success and error metadata.
+
         """
         res = {
             "pred_lat": None,
@@ -787,6 +796,7 @@ class PositioningEngine:
 
         Returns:
             None.
+
         """
         out_path = results_dir / f"{q_path.stem}_vs_{m_path.stem}_match.png"
         if hasattr(self.pipeline, "visualize_matches"):

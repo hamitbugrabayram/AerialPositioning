@@ -9,6 +9,7 @@ Attributes:
     _TARGET_YAW (float): Geographic north orientation target (0.0).
     _TARGET_PITCH (float): Nadir (top-down) orientation target (-90.0).
     _TARGET_ROLL (float): Horizontal level target (0.0).
+
 """
 
 import math
@@ -45,6 +46,7 @@ class CameraModel:
         focal_length_px (float): Focal length in pixels.
         principal_point_x (float): Principal point X coordinate in pixels.
         principal_point_y (float): Principal point Y coordinate in pixels.
+
     """
 
     focal_length: float
@@ -62,6 +64,7 @@ class CameraModel:
 
         Raises:
             ValueError: If camera dimensions or field of view are invalid.
+
         """
         if (
             self.resolution_width <= 0
@@ -94,6 +97,7 @@ def _compute_resize_dimensions(
 
     Returns:
         Tuple of (new_width, new_height).
+
     """
     if height <= 0 or width <= 0:
         return width, height
@@ -122,6 +126,7 @@ def _get_intrinsic_matrix(
 
     Returns:
         The 3x3 intrinsic matrix.
+
     """
     if scale <= 0:
         scale = 1.0
@@ -157,6 +162,7 @@ def _euler_to_rotation_matrix(
 
     Returns:
         The 3x3 rotation matrix.
+
     """
     r_rad = math.radians(float(roll))
     p_rad = math.radians(float(pitch))
@@ -200,6 +206,7 @@ class QueryPreprocessor:
         camera_model (CameraModel): The camera intrinsics used for warping.
         device (torch.device): Compute device for tensor operations.
         use_gpu (bool): Flag indicating if CUDA is available and selected.
+
     """
 
     def __init__(
@@ -212,6 +219,7 @@ class QueryPreprocessor:
         Args:
             camera_model: Optional camera model; required for warping.
             device: Optional specific device string (e.g., "cuda:0").
+
         """
         self.camera_model = camera_model
 
@@ -234,6 +242,7 @@ class QueryPreprocessor:
 
         Raises:
             PreprocessingError: If any pipeline step fails.
+
         """
         try:
             resized = self._apply_resize(image)
@@ -252,6 +261,7 @@ class QueryPreprocessor:
 
         Returns:
             A normalized float tensor on the target device.
+
         """
         if len(image.shape) == 3 and image.shape[2] == 3:
             image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -268,6 +278,7 @@ class QueryPreprocessor:
 
         Returns:
             An 8-bit unsigned integer NumPy image array.
+
         """
         image = tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
         image = (image * 255).clip(0, 255).astype(np.uint8)
@@ -286,6 +297,7 @@ class QueryPreprocessor:
 
         Raises:
             PreprocessingError: If GPU-based resizing fails.
+
         """
         height, width = image.shape[:2]
         new_width, new_height = _compute_resize_dimensions(
@@ -333,6 +345,7 @@ class QueryPreprocessor:
         Raises:
             PreprocessingError: If dimensions are invalid or the
                 homography computation fails.
+
         """
         height_orig, width_orig = image.shape[:2]
         if height_orig <= 0 or width_orig <= 0:

@@ -13,6 +13,7 @@ class DkmStrategy(GimStrategy):
     Attributes:
         target_h: Target height for image processing.
         target_w: Target width for image processing.
+
     """
 
     def __init__(
@@ -24,6 +25,7 @@ class DkmStrategy(GimStrategy):
             device: Torch device for computation.
             params: Configuration parameters from gim_params.
             state_dict: Pretrained weights dictionary.
+
         """
         self.target_h = params.get("dkm_h", 672)
         self.target_w = params.get("dkm_w", 896)

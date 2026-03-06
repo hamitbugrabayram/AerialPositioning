@@ -19,6 +19,7 @@ class ESRIProvider(BaseTileProvider):
 
         Returns:
             Provider identifier string.
+
         """
         return "esri"
 
@@ -32,6 +33,7 @@ class ESRIProvider(BaseTileProvider):
 
         Returns:
             URL string for the tile.
+
         """
         return (
             f"https://server.arcgisonline.com/ArcGIS/rest/services/"
@@ -51,6 +53,7 @@ class GoogleProvider(BaseTileProvider):
 
         Returns:
             Provider identifier string.
+
         """
         return "google"
 
@@ -64,5 +67,6 @@ class GoogleProvider(BaseTileProvider):
 
         Returns:
             URL string for the tile.
+
         """
         return f"https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"

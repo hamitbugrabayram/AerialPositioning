@@ -32,6 +32,7 @@ class QueryResult:
         search_center_latitude: Center latitude of search.
         search_center_longitude: Center longitude of search.
         failure_reason: Reason for failure, if any.
+
     """
 
     query_filename: str
@@ -68,6 +69,7 @@ class PositioningConfig:
         ransac_params: RANSAC configuration.
         positioning_params: Positioning process parameters.
         tile_provider: Tile provider configuration.
+
     """
 
     matcher_type: str
@@ -94,6 +96,7 @@ class PositioningConfig:
         Raises:
             FileNotFoundError: If config file doesn't exist.
             yaml.YAMLError: If config file is invalid.
+
         """
         with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
@@ -159,6 +162,7 @@ class PositioningConfig:
 
         Returns:
             Dict[str, Any]: Configuration as dictionary.
+
         """
         return {
             "matcher_type": self.matcher_type,

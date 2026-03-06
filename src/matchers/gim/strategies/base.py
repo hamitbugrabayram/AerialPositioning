@@ -15,6 +15,7 @@ class GimStrategy(ABC):
         device: Torch device for computation.
         params: Configuration parameters for the strategy.
         model: The loaded model instance.
+
     """
 
     def __init__(
@@ -26,6 +27,7 @@ class GimStrategy(ABC):
             device: Torch device for computation.
             params: Configuration parameters from gim_params.
             state_dict: Pretrained weights dictionary.
+
         """
         self.device = device
         self.params = params
@@ -48,6 +50,7 @@ class GimStrategy(ABC):
 
         Args:
             state_dict: Pretrained weights dictionary.
+
         """
 
     @abstractmethod
@@ -61,4 +64,5 @@ class GimStrategy(ABC):
 
         Returns:
             Tuple of (keypoints0, keypoints1, confidence_scores).
+
         """

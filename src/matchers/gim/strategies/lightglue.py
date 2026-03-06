@@ -12,6 +12,7 @@ class LightGlueStrategy(GimStrategy):
 
     Attributes:
         detector: SuperPoint keypoint detector instance.
+
     """
 
     def __init__(

@@ -19,6 +19,7 @@ def get_provider(name: str) -> BaseTileProvider:
 
     Raises:
         ValueError: If provider is not supported.
+
     """
     providers = {
         "esri": ESRIProvider(),

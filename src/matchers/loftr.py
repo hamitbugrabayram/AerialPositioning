@@ -44,6 +44,7 @@ class LoFTRPipeline(BaseMatcher):
     Attributes:
         model (LoFTRModel): The initialized LoFTR model.
         loftr_params (Dict[str, Any]): Configuration specific to LoFTR.
+
     """
 
     def __init__(self, config: Dict[str, Any]) -> None:
@@ -51,6 +52,7 @@ class LoFTRPipeline(BaseMatcher):
 
         Args:
             config (Dict[str, Any]): Configuration dictionary containing matcher parameters.
+
         """
         super().__init__(config)
         self._device = torch.device(self.device)
@@ -83,6 +85,7 @@ class LoFTRPipeline(BaseMatcher):
 
         Raises:
             RuntimeError: If loading the checkpoint fails.
+
         """
         try:
             checkpoint = torch.load(weights_path, map_location="cpu")
@@ -107,6 +110,7 @@ class LoFTRPipeline(BaseMatcher):
         Returns:
             Tuple[Optional[torch.Tensor], Optional[np.ndarray], Optional[Tuple[int, int]]]:
                 A tuple containing the image tensor, scale array, and original dimensions.
+
         """
         try:
             image_bgr = cv2.imread(str(image_path))
@@ -160,6 +164,7 @@ class LoFTRPipeline(BaseMatcher):
 
         Returns:
             Tuple[int, int]: The target width and height for resizing.
+
         """
         resize_opt = self.loftr_params.get("resize")
         target_w, target_h = w_orig, h_orig
@@ -189,6 +194,7 @@ class LoFTRPipeline(BaseMatcher):
 
         Returns:
             Dict[str, Any]: Dictionary containing match coordinates and success status.
+
         """
         start_time = time.time()
         results = self._create_empty_result()

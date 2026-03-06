@@ -4,9 +4,8 @@
 This repository presents a vision-based positioning process for estimating the horizontal position (latitude and longitude) of an aerial platform in GNSS-denied environments. Given only an initial starting position, the method matches onboard imagery against pre-existing satellite map tiles to produce coordinate estimates purely from visual information. To improve cross-view consistency, the process uses aerial vehicle attitude information to rectify oblique camera views into a nadir-oriented perspective aligned with satellite imagery.
 
 <div align="center">
-  <p><strong>Region 01 Evaluation</strong></p>
-    <img src="./assets/showcase.gif" width="100%" alt="Region 01 Evaluation">
-  </a>
+  <p><strong>Example Match</strong></p>
+  <img src="./assets/showcase.gif" width="100%" alt="Region 01 evaluation match example">
 </div>
 
 ## Table of Contents
@@ -104,7 +103,7 @@ A single 256x256 satellite tile may not cover the drone's full field of view, es
 - **Zoom level** (determines tile ground resolution).
 
 $$
-g = \min\!\left(\left\lceil \frac{h\,c}{t}\right\rceil,\; g_{\max}\right)
+g = \min(\lceil hc/t \rceil,\ g_{\max})
 $$
 
 where $h$ is altitude, $c$ is coverage factor, $t$ is tile ground coverage, and
@@ -116,7 +115,7 @@ With `max_grid=3`, the composite is 768x768 px (3x3 tiles), which matches the ma
 When `--zoom-levels` is omitted, zoom is selected automatically with:
 
 $$
-z_{\mathrm{base}} = \left\lfloor \log_2\!\left(\frac{\cos(\phi)\,2\pi R\,g_{\max}}{h\,c}\right) \right\rfloor
+z_{\mathrm{base}} = \lfloor \log_2(\cos(\phi)\,2\pi R\,g_{\max}/hc) \rfloor
 $$
 
 where $\phi$ is latitude, $R$ is Earth radius, and $h,c,g_{\max}$ are defined
@@ -187,6 +186,10 @@ The results reported below correspond to the following setup:
 *   **Provider comparison:** Google has higher success in 8 regions, ESRI in 2 regions, and 1 region is tied.
 *   **Best performance:** Region 03 and Region 04 reach 100% success with Google.
 *   **Most difficult cases:** Region 07 fails for both providers; Region 10 remains low on both.
+*   **Dataset caveat (Region 07):** Satellite-image generation for Region 07 produced errors, and the most likely cause is incorrect GT coordinates in the original dataset metadata.
+
+You can watch the per-region evaluation outputs from this playlist:
+[Dataset Results (Youtube)](https://www.youtube.com/playlist?list=PL1iuXNnG1vnMdXU7XmagU-2MMkmULcEcU)
 
 ### Full Evaluation — All Regions (11 regions x 2 providers)
 
@@ -219,13 +222,14 @@ The table below includes every evaluated region (01-11) for both tile providers.
   <img src="assets/results_summary_charts.png" alt="Summary Charts">
 </p>
 
-Region 07 is excluded from the charts because both providers are at 0% success there.
+Region 07 is excluded from the charts because both providers are at 0% success there. During dataset preparation, satellite-image generation for Region 07 also produced errors; the most likely explanation is that the GT coordinates provided by the dataset are incorrect for that sequence.
 
 ### Observations
 
 *   **Overall comparison:** Google has higher aggregate success rate (79.08% vs 76.30%), while median error is very close between providers.
 *   **Strong regions:** Regions 03, 04, and 11 remain near-perfect (>96% on both providers).
 *   **Challenging regions:** Region 07 is currently unresolved (0% for both), and Region 10 remains low-success on both providers.
+*   **Region 07 data quality:** The repeated preparation errors on Region 07 are likely dataset-side rather than matcher-side; the GT values shipped with that sequence appear to be wrong.
 *   **Provider-sensitive regions:** Regions 05 and 06 show large gains with Google in success rate.
 *   **Low-texture failure mode:** In sea, river, and very rural scenes, matching often fails when the system cannot extract enough reliable visual features.
 

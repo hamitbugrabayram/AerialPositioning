@@ -30,6 +30,7 @@ class TrajectoryVisualizer:
         output_dir (Optional[Path]): Root experiment output directory.
         frames_dir (Optional[Path]): Directory for saving frame plots.
         assets_dir (Optional[Path]): Directory for saving summary plots.
+
     """
 
     _OVERLAY_MAX_SIDE = 4096
@@ -43,6 +44,7 @@ class TrajectoryVisualizer:
 
         Args:
             config: The positioning configuration.
+
         """
         self.config = config
         self.map_df: Optional[pd.DataFrame] = None
@@ -67,6 +69,7 @@ class TrajectoryVisualizer:
             output_dir: Root experiment directory.
             frames_dir: Directory for frame-by-frame plots.
             assets_dir: Directory for summary assets.
+
         """
         if map_df is not None:
             self.map_df = map_df
@@ -89,6 +92,7 @@ class TrajectoryVisualizer:
         Args:
             results: List of query results to plot.
             frame_idx: Optional index for frame-by-frame saving.
+
         """
         if not results or not self.output_dir:
             return
@@ -109,6 +113,7 @@ class TrajectoryVisualizer:
         Args:
             results: List of query results to plot.
             frame_idx: Optional index for frame-by-frame saving.
+
         """
         plt.figure(figsize=(12, 10))
 
@@ -292,6 +297,7 @@ class TrajectoryVisualizer:
 
         Returns:
             ``(lats, lons)`` lists.
+
         """
         lats: List[float] = []
         lons: List[float] = []
@@ -338,6 +344,7 @@ class TrajectoryVisualizer:
 
         Returns:
             ``(t_left, t_right, t_top, t_bottom)`` of the safe rect.
+
         """
         max_iter = (t_right - t_left) + (t_bottom - t_top) + 2
         for _ in range(max_iter):
@@ -482,6 +489,7 @@ class TrajectoryVisualizer:
 
         Returns:
             Tuple[int, int]: The pixel coordinates (x, y) on the canvas.
+
         """
         px, py = TileSystem.latlong_to_pixel_xy(float(lat), float(lon), level)
         return int((px - origin[0]) * scale), int((py - origin[1]) * scale)
@@ -504,6 +512,7 @@ class TrajectoryVisualizer:
             scale (float): Map scale.
             origin (Tuple[int, int]): Origin pixel.
             level (int): Zoom level.
+
         """
         if self.full_query_df is None:
             return
@@ -544,6 +553,7 @@ class TrajectoryVisualizer:
             scale (float): Map scale.
             origin (Tuple[int, int]): Origin pixel.
             level (int): Zoom level.
+
         """
         pts = []
         for r in results:
@@ -581,6 +591,7 @@ class TrajectoryVisualizer:
             scale (float): Map scale.
             origin (Tuple[int, int]): Origin pixel.
             level (int): Zoom level.
+
         """
         error_color = (0, 0, 255)
         failed_color = (0, 0, 255)
@@ -703,6 +714,7 @@ class TrajectoryVisualizer:
             scale (float): Font scale.
             color (Tuple[int, int, int]): Font color in BGR format.
             thickness (int): Font thickness.
+
         """
         cv2.putText(
             img,

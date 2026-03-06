@@ -11,7 +11,6 @@ import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import cv2
 import pandas as pd
 import yaml
 
@@ -32,6 +31,7 @@ class DatasetManager:
         raw_root (Path): Path to the raw aerial positioning dataset.
         central_root (Path): Path where processed datasets are stored.
         base_config_path (Path): Path to the base template config.yaml.
+
     """
 
     def __init__(
@@ -48,6 +48,7 @@ class DatasetManager:
             raw_dataset_root (Path): Path to the raw aerial positioning dataset.
             central_datasets_root (Path): Path where processed datasets are stored.
             base_config_path (Path): Path to the base template config.yaml.
+
         """
         self.project_root = project_root
         self.raw_root = raw_dataset_root
@@ -60,6 +61,7 @@ class DatasetManager:
         Returns:
             Optional[Dict[str, Any]]: The loaded configuration dictionary, or None
             if the base configuration file does not exist.
+
         """
         if not self.base_config_path.exists():
             return None
@@ -72,6 +74,7 @@ class DatasetManager:
         Args:
             config (Dict[str, Any]): The configuration dictionary to save.
             path (Path): The file path where the YAML will be saved.
+
         """
         with open(path, "w", encoding="utf-8") as f:
             yaml.dump(config, f, default_flow_style=False)
@@ -84,6 +87,7 @@ class DatasetManager:
 
         Returns:
             str: The sanitized name of the region.
+
         """
         csv_path = self.raw_root / "satellite_ coordinates_range.csv"
         region_name = f"Region_{index_str}"
@@ -105,6 +109,7 @@ class DatasetManager:
 
         Returns:
             Path: The central dataset directory path for the given region index.
+
         """
         region_id = f"{index:02d}"
         region_name = self.get_region_name(region_id)
@@ -122,6 +127,7 @@ class DatasetManager:
 
         Returns:
             float: Extracted float value.
+
         """
         val = row.get(key)
         if pd.api.types.is_scalar(val):
@@ -138,6 +144,7 @@ class DatasetManager:
 
         Returns:
             Path: The central dataset directory path for the prepared region.
+
         """
         region_id = f"{index:02d}"
         dataset_dir = self.get_dataset_dir(index)
@@ -218,6 +225,7 @@ class DatasetManager:
             RuntimeError: If the base configuration cannot be found or sample images
                 cannot be read.
             FileNotFoundError: If no query images are found for resolution detection.
+
         """
         base_config = self.load_base_config()
         if base_config is None:
@@ -264,6 +272,7 @@ class DatasetManager:
         Raises:
             FileNotFoundError: If the region has not been prepared yet
                 (no ``photo_metadata.csv``).
+
         """
         dataset_dir = self.get_dataset_dir(index)
         meta_path = dataset_dir / "query" / "photo_metadata.csv"
@@ -302,6 +311,7 @@ class DatasetManager:
 
         Returns:
             Sorted list of integer zoom levels found on disk.
+
         """
         dataset_dir = self.get_dataset_dir(index)
         map_root = dataset_dir / "map" / provider
@@ -329,6 +339,7 @@ class DatasetManager:
             provider_names (List[str]): List of tile provider names to use.
             map_margin_m (float): Margin in meters added around dataset
                 bounds for map tile download. Default is 1100 m.
+
         """
         dataset_dir = self.prepare_shared_dataset(index)
         region_id = f"{index:02d}"

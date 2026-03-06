@@ -19,6 +19,7 @@ class PipelineFactory:
 
     Attributes:
         PIPELINE_REGISTRY: Mapping of matcher type to module and class names.
+
     """
 
     PIPELINE_REGISTRY: Dict[str, Tuple[str, str]] = {
@@ -34,6 +35,7 @@ class PipelineFactory:
 
         Returns:
             List[str]: List of supported matcher type strings.
+
         """
         return list(cls.PIPELINE_REGISTRY.keys())
 
@@ -50,6 +52,7 @@ class PipelineFactory:
         Raises:
             ValueError: If the matcher type is not supported.
             ImportError: If the pipeline module or class cannot be loaded.
+
         """
         matcher_type = config.matcher_type.lower()
 

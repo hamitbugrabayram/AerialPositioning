@@ -46,6 +46,7 @@ def preprocess_for_gim(
     Returns:
         Tuple[Optional[torch.Tensor], Optional[np.ndarray], Optional[Tuple[int, int]]]:
             Tuple of (normalized_tensor, scale_to_original, original_size_wh).
+
     """
     if image is None or image.size == 0:
         return None, None, None
@@ -114,6 +115,7 @@ class GimPipeline(BaseMatcher):
         strategy (GimStrategy): The active matching strategy instance.
         weights_path (str): Path to the model weights.
         gim_params (Dict[str, Any]): Configuration parameters for GIM.
+
     """
 
     SUPPORTED_MODELS = {"dkm", "loftr", "lightglue"}
@@ -132,6 +134,7 @@ class GimPipeline(BaseMatcher):
         Raises:
             FileNotFoundError: If weights file is missing.
             ValueError: If an unsupported model type is specified.
+
         """
         super().__init__(config)
         self._device = torch.device(self.device)
@@ -162,6 +165,7 @@ class GimPipeline(BaseMatcher):
 
         Returns:
             GimStrategy: The instantiated strategy object.
+
         """
         state_dict = torch.load(self.weights_path, map_location="cpu")
         if isinstance(state_dict, dict) and "state_dict" in state_dict:
@@ -182,6 +186,7 @@ class GimPipeline(BaseMatcher):
         Returns:
             Tuple[Optional[torch.Tensor], Optional[np.ndarray], Optional[Tuple[int, int]]]:
                 A tuple of the normalized tensor, scale array, and original size.
+
         """
         mode = cv2.IMREAD_GRAYSCALE if grayscale else cv2.IMREAD_COLOR
         image = cv2.imread(str(image_path), mode)
@@ -217,6 +222,7 @@ class GimPipeline(BaseMatcher):
 
         Returns:
             Dict[str, Any]: Dictionary containing match coordinates and success status.
+
         """
         start_time = time.time()
         results = self._create_empty_result()

@@ -37,6 +37,7 @@ def __getattr__(name: str):
 
     Raises:
         AttributeError: If the requested attribute is not found.
+
     """
     if name == "LightGluePipeline":
         from src.matchers.lightglue import LightGluePipeline

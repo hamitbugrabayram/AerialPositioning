@@ -47,6 +47,7 @@ class Evaluator(PositioningRunner):
         skip_penalty_m: Metres added to radius after each skipped frame.
         ins_noise_sigma_m: Per-step INS noise standard deviation (metres).
         ins_noise_max_m: Per-step INS noise hard cap (metres).
+
     """
 
     _VALID_STRATEGIES = ("ins_simulation", "adaptive_radius")
@@ -58,6 +59,7 @@ class Evaluator(PositioningRunner):
 
         Args:
             config: Global positioning configuration object.
+
         """
         super().__init__(config)
         self.full_query_df: Optional[pd.DataFrame] = None
@@ -98,6 +100,7 @@ class Evaluator(PositioningRunner):
 
         Returns:
             None.
+
         """
         self._validate_paths()
         self._setup_output_directory()
@@ -180,6 +183,7 @@ class Evaluator(PositioningRunner):
 
         Returns:
             Tuple ``(d_lat, d_lon)`` in degrees.
+
         """
         mag_m = min(abs(random.gauss(0, self.ins_noise_sigma_m)),
                      self.ins_noise_max_m)
@@ -194,6 +198,7 @@ class Evaluator(PositioningRunner):
 
         Returns:
             Tuple ``(temp_dir, min_inliers, save_viz)``.
+
         """
         temp_dir: Optional[Path] = None
         if self.assets_dir:
@@ -237,6 +242,7 @@ class Evaluator(PositioningRunner):
             query_row: Original query metadata row (optional).
             match_details: Rich match dictionary returned by the engine
                 containing homography, tile metadata, etc. (optional).
+
         """
         results.append(result)
         if self.save_frame_sequence:
@@ -308,6 +314,7 @@ class Evaluator(PositioningRunner):
 
         Returns:
             List of sampled-frame query results.
+
         """
         if self.sampled_query_df is None or self.sampled_query_df.empty:
             return []
@@ -331,6 +338,7 @@ class Evaluator(PositioningRunner):
 
         Returns:
             List of sampled-frame query results.
+
         """
         assert self.sampled_query_df is not None
         temp_dir, min_inliers, save_viz = self._prepare_eval_context()
@@ -425,6 +433,7 @@ class Evaluator(PositioningRunner):
 
         Returns:
             List of sampled-frame query results.
+
         """
         assert self.sampled_query_df is not None
         temp_dir, min_inliers, save_viz = self._prepare_eval_context()
@@ -516,6 +525,7 @@ class Evaluator(PositioningRunner):
             Tuple of ``(QueryResult, Optional[Dict])`` where the second
             element carries rich match details (homography, tile
             metadata, etc.) when a match succeeded.
+
         """
         query_filename = str(query_row["Filename"])
         gt_lat = float(cast(Any, query_row).get("Latitude", 0.0))

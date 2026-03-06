@@ -23,6 +23,7 @@ class ResultManager:
     Attributes:
         output_dir (Path): The root experiment directory.
         assets_dir (Path): The directory for summary assets.
+
     """
 
     def __init__(self, output_dir: Path, assets_dir: Path):
@@ -34,6 +35,7 @@ class ResultManager:
 
         Returns:
             None.
+
         """
         self.output_dir = output_dir
         self.assets_dir = assets_dir
@@ -47,6 +49,7 @@ class ResultManager:
 
         Returns:
             None.
+
         """
         if not results:
             _logger.info("No results to save.")
@@ -71,6 +74,7 @@ class ResultManager:
 
         Returns:
             pd.DataFrame: Tabular dataframe representation of query results.
+
         """
         data = []
         for r in results:
@@ -107,6 +111,7 @@ class ResultManager:
 
         Returns:
             None.
+
         """
         successful = df[df["Positioning Success"]]
         num_processed = len(results)

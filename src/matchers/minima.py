@@ -34,6 +34,7 @@ class MinimaPipeline(BaseMatcher):
         method (str): Selected matching method.
         matcher (Any): The loaded MINIMA matcher callable.
         minima_params (Dict[str, Any]): MINIMA specific configuration.
+
     """
 
     SUPPORTED_METHODS = ["xoftr", "sp_lg", "loftr"]
@@ -43,6 +44,7 @@ class MinimaPipeline(BaseMatcher):
 
         Args:
             config (Dict[str, Any]): Configuration dictionary containing matcher parameters.
+
         """
         super().__init__(config)
 
@@ -73,6 +75,7 @@ class MinimaPipeline(BaseMatcher):
 
         Args:
             args (Namespace): Namespace arguments configured for the target method.
+
         """
         original_dir = os.getcwd()
         original_path = sys.path.copy()
@@ -128,6 +131,7 @@ class MinimaPipeline(BaseMatcher):
 
         Returns:
             Namespace: Populated namespace with checkpoint paths and thresholds.
+
         """
         args = Namespace()
 
@@ -164,6 +168,7 @@ class MinimaPipeline(BaseMatcher):
 
         Returns:
             Dict[str, Any]: Dictionary containing match results.
+
         """
         start_time = time.time()
         results = self._create_empty_result()

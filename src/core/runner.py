@@ -38,6 +38,7 @@ class PositioningRunner:
         map_df (Optional[pd.DataFrame]): DataFrame containing map tile metadata.
         output_dir (Optional[Path]): Directory for saving results.
         assets_dir (Optional[Path]): Directory for saving visual assets.
+
     """
 
     def __init__(self, config: PositioningConfig):
@@ -45,6 +46,7 @@ class PositioningRunner:
 
         Args:
             config: Global positioning configuration object.
+
         """
         self.config = config
         self.pipeline = None
@@ -62,6 +64,7 @@ class PositioningRunner:
 
         Returns:
             `True` when helper injection is ready.
+
         """
         if self._helpers_loaded:
             return True
@@ -83,6 +86,7 @@ class PositioningRunner:
 
         Returns:
             None.
+
         """
         self._validate_paths()
         self._setup_output_directory()
@@ -106,6 +110,7 @@ class PositioningRunner:
 
         Returns:
             None.
+
         """
         paths = self.config.data_paths
         req = ["query_dir", "map_dir", "output_dir", "query_metadata", "map_metadata"]
@@ -118,6 +123,7 @@ class PositioningRunner:
 
         Returns:
             None.
+
         """
         self.output_dir = Path(self.config.data_paths["output_dir"])
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -128,6 +134,7 @@ class PositioningRunner:
 
         Returns:
             None.
+
         """
         from src.utils.preprocessing import CameraModel, QueryPreprocessor
 
@@ -146,6 +153,7 @@ class PositioningRunner:
 
         Returns:
             None.
+
         """
         self.pipeline = PipelineFactory.create(self.config)
         if self.pipeline is None:
@@ -156,6 +164,7 @@ class PositioningRunner:
 
         Returns:
             None.
+
         """
         paths = self.config.data_paths
         try:
@@ -174,6 +183,7 @@ class PositioningRunner:
 
         Returns:
             None.
+
         """
         if self.query_df is None or self.map_df is None:
             return
@@ -204,6 +214,7 @@ class PositioningRunner:
 
         Returns:
             List of per-query positioning outputs.
+
         """
         results: List[QueryResult] = []
         if self.query_df is None or self.engine is None:
@@ -246,6 +257,7 @@ class PositioningRunner:
 
         Returns:
             Per-query best result.
+
         """
         fname = str(row["Filename"])
         res = QueryResult(
@@ -289,6 +301,7 @@ class PositioningRunner:
 
         Returns:
             Filtered map metadata dataframe.
+
         """
         if self.engine is None:
             return map_df
@@ -312,6 +325,7 @@ class PositioningRunner:
 
         Returns:
             Filtered dataframe containing only tiles within the radius.
+
         """
         if map_df.empty:
             return map_df
@@ -354,6 +368,7 @@ class PositioningRunner:
 
         Returns:
             Distance array in meters.
+
         """
         earth_radius = 6371000.0
         lat1_rad = np.radians(lat1)
@@ -379,6 +394,7 @@ class PositioningRunner:
 
         Returns:
             `True` if the candidate should replace current best result.
+
         """
         return (
             not curr.success
@@ -398,6 +414,7 @@ class PositioningRunner:
 
         Returns:
             None.
+
         """
         res.best_map_filename, res.inliers = m_res["map_filename"], m_res["inliers"]
         res.outliers, res.time = m_res["outliers"], m_res["time"]
@@ -416,6 +433,7 @@ class PositioningRunner:
 
         Returns:
             None.
+
         """
         if self.result_manager:
             q_len = len(self.query_df) if self.query_df is not None else 0
@@ -426,6 +444,7 @@ class PositioningRunner:
 
         Returns:
             None.
+
         """
         if self.assets_dir is None:
             return

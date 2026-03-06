@@ -65,6 +65,7 @@ class FrameData:
             ``mkpts0`` / ``mkpts1``.
         map_match_path: Path to the map image that was actually fed
             to the matcher (may be a context composite).
+
     """
 
     frame_idx: int
@@ -127,6 +128,7 @@ class CompositeFrameRenderer:
             to determine the satellite viewport extent.
         MAX_DRAWN_MATCHES: Cap on inlier lines drawn to avoid clutter.
         JPEG_QUALITY: Output JPEG compression quality.
+
     """
 
     FRAME_W = 1920
@@ -175,6 +177,7 @@ class CompositeFrameRenderer:
                 and ``Longitude`` columns for the trajectory extent.
             output_dir: Parent directory under which the
                 ``frames/`` sub-directory is created.
+
         """
         self.config = config
         self.map_df = map_df
@@ -218,6 +221,7 @@ class CompositeFrameRenderer:
 
         Returns:
             Path to the saved JPEG, or ``None`` on failure.
+
         """
         try:
             self._update_camera(frame_data)
@@ -264,6 +268,7 @@ class CompositeFrameRenderer:
         Args:
             fd: Current frame data providing the target position and
                 search radius.
+
         """
         if fd.success and fd.predicted_lat is not None:
             target_lat = fd.predicted_lat
@@ -303,6 +308,7 @@ class CompositeFrameRenderer:
             *global_to_panel* is a callable that maps Mercator
             global-pixel coordinates ``(gpx, gpy)`` to panel-pixel
             coordinates ``(px, py)``.
+
         """
         pw, ph = self.RIGHT_W, self.FRAME_H
         cam_lat = float(self.cam_lat)
@@ -384,6 +390,7 @@ class CompositeFrameRenderer:
             g2p: Coordinate mapping from
                 :meth:`_render_satellite_panel`.
             fd: Current frame data.
+
         """
         sc_gpx, sc_gpy = TileSystem.latlong_to_pixel_xy(
             fd.search_center_lat, fd.search_center_lon, self.level,
@@ -433,6 +440,7 @@ class CompositeFrameRenderer:
                 :meth:`_render_satellite_panel`.
             fd: Current frame data (must have ``homography``,
                 ``effective_map_metadata``, and ``query_shape``).
+
         """
         homography = fd.homography
         meta = fd.effective_map_metadata
@@ -506,6 +514,7 @@ class CompositeFrameRenderer:
 
         Returns:
             BGR image array of the info + trajectory panel.
+
         """
         pw, ph = self.LEFT_W, self.TOP_LEFT_H
         panel = np.full((ph, pw, 3), self.COL_INFO_BG, dtype=np.uint8)
@@ -637,6 +646,7 @@ class CompositeFrameRenderer:
 
         Returns:
             Tuple of ``(panel, scale, x_offset, y_offset)``.
+
         """
         pw, ph = self.LEFT_W, self.BOT_LEFT_H
         panel = np.full((ph, pw, 3), self.COL_PANEL_BG, dtype=np.uint8)
@@ -686,6 +696,7 @@ class CompositeFrameRenderer:
             q_xo: Horizontal offset of the letterboxed query image.
             q_yo: Vertical offset of the letterboxed query image.
             g2p: Mercator-to-satellite-panel coordinate mapping.
+
         """
         if not fd.success:
             return
@@ -764,6 +775,7 @@ class CompositeFrameRenderer:
 
         Returns:
             Full composite frame as a BGR image array.
+
         """
         frame = np.full(
             (self.FRAME_H, self.FRAME_W, 3),

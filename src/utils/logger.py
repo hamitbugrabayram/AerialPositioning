@@ -16,6 +16,7 @@ class CustomFormatter(logging.Formatter):
 
     Attributes:
         FORMATS (dict): Mapping of logging levels to their string formats.
+
     """
 
     grey = "\x1b[38;20m"
@@ -45,6 +46,7 @@ class CustomFormatter(logging.Formatter):
 
         Returns:
             The formatted log string.
+
         """
         log_fmt = self.FORMATS.get(record.levelno, self.format_str)
         formatter = logging.Formatter(log_fmt)
@@ -56,6 +58,7 @@ class AppLogger(logging.Logger):
 
     Attributes:
         name: The name of the logger.
+
     """
 
     def fallback(self, msg: str, *args: Any, **kwargs: Any) -> None:
@@ -65,6 +68,7 @@ class AppLogger(logging.Logger):
             msg: The message to log.
             *args: Variable length argument list.
             **kwargs: Arbitrary keyword arguments.
+
         """
         if self.isEnabledFor(_FALLBACK_LEVEL):
             self._log(_FALLBACK_LEVEL, msg, args, **kwargs)
@@ -77,6 +81,7 @@ def get_logger(name: str) -> AppLogger:
 
     Returns:
         A configured AppLogger instance.
+
     """
     logging.setLoggerClass(AppLogger)
     logger = logging.getLogger(name)

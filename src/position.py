@@ -14,6 +14,7 @@ Example:
         $ python -m src.position --config config.yaml
         $ python -m src.position --config config.yaml --verbose
         $ python -m src.position --config config.yaml --eval
+
 """
 
 import argparse
@@ -37,6 +38,7 @@ def parse_arguments() -> argparse.Namespace:
             - config: Path to configuration YAML file
             - verbose: Enable verbose output
             - eval: Run in evaluation mode
+
     """
     parser = argparse.ArgumentParser(
         description="Aerial Positioning via Satellite Imagery",
@@ -78,6 +80,7 @@ def main() -> int:
 
     Returns:
         Exit code where 0 indicates success and 1 indicates failure.
+
     """
     args = parse_arguments()
     config_path = Path(args.config)

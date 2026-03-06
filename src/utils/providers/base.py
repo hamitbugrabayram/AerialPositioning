@@ -44,6 +44,7 @@ class BaseTileProvider(ABC):
         Raises:
             RuntimeError: If the download fails with a non-200 status code.
             requests.RequestException: If the network request fails.
+
         """
         url = self.get_tile_url(x, y, z)
         headers = {

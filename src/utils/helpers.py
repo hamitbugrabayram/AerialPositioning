@@ -62,6 +62,7 @@ def latlon_to_pixel(
 
     Raises:
         ValueError: If required metadata keys are missing.
+
     """
     height, width = map_shape[:2]
     required_keys = [
@@ -126,6 +127,7 @@ def haversine_distance(
 
     Raises:
         PositioningError: If the calculation fails due to invalid input.
+
     """
     try:
         lat1_rad, lon1_rad, lat2_rad, lon2_rad = map(
@@ -163,6 +165,7 @@ def calculate_predicted_gps(
 
     Raises:
         PositioningError: If GPS calculation fails or inputs are invalid.
+
     """
     if normalized_center_xy is None:
         raise PositioningError("Normalized center coordinates are missing.")
@@ -212,6 +215,7 @@ def _calculate_gps_mercator(
 
     Raises:
         PositioningError: If TileSystem calculation fails.
+
     """
     try:
         level = int(map_metadata["Level"])
@@ -250,6 +254,7 @@ def is_stable_homography(
 
     Returns:
         bool: True if plausible, False otherwise.
+
     """
     if H is None or H.shape != (3, 3):
         return False
@@ -303,6 +308,7 @@ def calculate_location_and_error(
 
     Raises:
         PositioningError: If the homography is unstable or transformation fails.
+
     """
     h_q, w_q = query_shape[0], query_shape[1]
     h_m, w_m = map_shape[0], map_shape[1]

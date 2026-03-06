@@ -23,6 +23,7 @@ def is_valid_homography(homography: Optional[np.ndarray]) -> bool:
 
     Returns:
         True if the matrix is valid, False otherwise.
+
     """
     if homography is None or homography.shape != (3, 3):
         return False
@@ -77,6 +78,7 @@ def create_match_visualization(
 
     Returns:
         True if successful, False otherwise.
+
     """
     try:
         img0 = cv2.imread(str(image0_path), cv2.IMREAD_COLOR)
