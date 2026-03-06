@@ -20,6 +20,7 @@ from src.utils.logger import get_logger
 _logger = get_logger(__name__)
 
 _MINIMA_PATH = Path(__file__).resolve().parent.parent.parent / "matchers/MINIMA"
+_PROJECT_SRC_PATH = Path(__file__).resolve().parent.parent
 
 
 class MinimaPipeline(BaseMatcher):
@@ -86,7 +87,11 @@ class MinimaPipeline(BaseMatcher):
             if not hasattr(np, "float"):
                 np.float = np.float64
 
-            sys.path = [p for p in sys.path if "AerialPositioning/src" not in p]
+            sys.path = [
+                p
+                for p in sys.path
+                if Path(p or ".").resolve() != _PROJECT_SRC_PATH
+            ]
 
             saved_modules = {}
             for mod_name in list(sys.modules.keys()):
