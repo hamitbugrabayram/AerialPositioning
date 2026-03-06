@@ -3,9 +3,11 @@
 
 This repository presents a vision-based positioning process for estimating the horizontal position (latitude and longitude) of an aerial platform in GNSS-denied environments. Given only an initial starting position, the method matches onboard imagery against pre-existing satellite map tiles to produce coordinate estimates purely from visual information. To improve cross-view consistency, the process uses aerial vehicle attitude information to rectify oblique camera views into a nadir-oriented perspective aligned with satellite imagery.
 
-<p align="center">
-  <video src="assets/showcase_region01_google.mp4" controls></video>
-</p>
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/0a3b3890-8481-44be-b594-5c120c62d465" width="100%" autoplay muted loop playsinline controls>
+    You're browser doesn't support to play the video.
+  </video>
+</div>
 
 ## Table of Contents
 - [Environment Setup and Usage](#environment-setup-and-usage)
@@ -179,7 +181,16 @@ The results reported below correspond to the following setup:
 
 ## Results
 
+### Overall Results
+
+*   **Evaluation scope:** 22 experiments across 11 regions with 2 map providers.
+*   **Provider comparison:** Google has higher success in 8 regions, ESRI in 2 regions, and 1 region is tied.
+*   **Best performance:** Region 03 and Region 04 reach 100% success with Google.
+*   **Most difficult cases:** Region 07 fails for both providers; Region 10 remains low on both.
+
 ### Full Evaluation — All Regions (11 regions x 2 providers)
+
+The table below includes every evaluated region (01-11) for both tile providers.
 
 | Region (ID) | Zoom | ESRI Success | Google Success | ESRI Median Err (m) | Google Median Err (m) | Better Provider (Success) |
 | :--- | :---: | :---: | :---: | ---: | ---: | :--- |
@@ -195,20 +206,20 @@ The results reported below correspond to the following setup:
 | Huailai (10) | 17 | 28.47% (41/144) | 26.39% (38/144) | 19.11 | 19.36 | ESRI |
 | Shandan (11) | 16 | 96.94% (570/588) | 98.81% (581/588) | 24.41 | 24.65 | Google |
 
-### Provider Comparison
+### Tile Provider Comparison
 
 | Provider | Experiments | Frames | Success | Success Rate | Mean Error (m) | Mean Median Error (m) | Mean Inliers | Mean Match Time (s) |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | esri | 11 | 6772 | 5167 | 76.30% | 29.39 | 20.86 | 243.7 | 0.039 |
 | google | 11 | 6772 | 5355 | 79.08% | 30.22 | 20.90 | 268.0 | 0.041 |
 
-### Summary Charts
+### Summary
 
 <p align="center">
-  <img src="assets/results_summary_charts.png" alt="Latest summary charts">
+  <img src="assets/results_summary_charts.png" alt="Summary Charts">
 </p>
 
-Region 07 is excluded from plotted aggregates for readability because both providers are at 0% success in that region.
+Region 07 is excluded from the charts because both providers are at 0% success there.
 
 ### Observations
 
@@ -216,6 +227,7 @@ Region 07 is excluded from plotted aggregates for readability because both provi
 *   **Strong regions:** Regions 03, 04, and 11 remain near-perfect (>96% on both providers).
 *   **Challenging regions:** Region 07 is currently unresolved (0% for both), and Region 10 remains low-success on both providers.
 *   **Provider-sensitive regions:** Regions 05 and 06 show large gains with Google in success rate.
+*   **Low-texture failure mode:** In sea, river, and very rural scenes, matching often fails when the system cannot extract enough reliable visual features.
 
 ## Limitations and Future Work
 
