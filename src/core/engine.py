@@ -48,23 +48,37 @@ class PositioningEngine:
 
         Reads the ``pair_logging`` key from ``positioning_params``.
         Accepts a plain *bool* for quick toggling or a *dict* with
-        ``enabled``, ``save_failed``, and ``save_matched`` keys.
+        ``enabled``, ``save_failed``, ``save_matched``, and optional
+        ``max_unique_pairs`` keys.
 
         Falls back to the legacy ``failed_pair_logging`` key when the
         modern key is absent.
 
         Returns:
-            Dictionary with ``enabled``, ``save_failed``, and
-            ``save_matched`` boolean values.
+            Dictionary with ``enabled``, ``save_failed``,
+            ``save_matched``, and ``max_unique_pairs``.
         """
         pair_cfg = self.config.positioning_params.get("pair_logging", {})
         if isinstance(pair_cfg, bool):
-            return {"enabled": pair_cfg, "save_failed": True, "save_matched": True}
+            return {
+                "enabled": pair_cfg,
+                "save_failed": True,
+                "save_matched": True,
+                "max_unique_pairs": None,
+            }
         if isinstance(pair_cfg, dict) and pair_cfg:
+            raw_max = pair_cfg.get("max_unique_pairs")
+            max_unique_pairs = None
+            if raw_max is not None:
+                try:
+                    max_unique_pairs = max(0, int(raw_max))
+                except (TypeError, ValueError):
+                    max_unique_pairs = None
             return {
                 "enabled": bool(pair_cfg.get("enabled", False)),
                 "save_failed": bool(pair_cfg.get("save_failed", True)),
                 "save_matched": bool(pair_cfg.get("save_matched", True)),
+                "max_unique_pairs": max_unique_pairs,
             }
 
         legacy_cfg = self.config.positioning_params.get("failed_pair_logging", {})
@@ -76,6 +90,7 @@ class PositioningEngine:
             "enabled": enabled,
             "save_failed": True,
             "save_matched": False,
+            "max_unique_pairs": None,
         }
 
     def _should_log_pair(self, status: str) -> bool:
@@ -83,6 +98,12 @@ class PositioningEngine:
         cfg = self._pair_logging_config()
         if not bool(cfg.get("enabled", False)):
             return False
+
+        max_unique_pairs = cfg.get("max_unique_pairs")
+        if isinstance(max_unique_pairs, int) and max_unique_pairs >= 0:
+            if len(self._pair_log_cache) >= max_unique_pairs:
+                return False
+
         if status == "matched":
             return bool(cfg.get("save_matched", True))
         return bool(cfg.get("save_failed", True))
@@ -497,7 +518,14 @@ class PositioningEngine:
         metadata = query_row.to_dict()
         variant_images: list[Tuple[np.ndarray, str]] = []
 
-        metadata["Gimball_Yaw"] = metadata.get("Gimball_Yaw_Phi1") or metadata.get("Phi1") or metadata.get("Gimball_Yaw", 0.0)
+        yaw = metadata.get("Gimball_Yaw_Phi1")
+        if yaw is None:
+            yaw = metadata.get("Phi1")
+        if yaw is None:
+            yaw = metadata.get("Phi2")
+        if yaw is None:
+            yaw = metadata.get("Gimball_Yaw", 0.0)
+        metadata["Gimball_Yaw"] = yaw
         processed = self.preprocessor(img_original, metadata)
         variant_images.append((processed, "preprocessed"))
 

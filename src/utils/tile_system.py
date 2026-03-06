@@ -395,14 +395,15 @@ class TileSystem:
                     }
                 )
 
-        def _download_and_save(x: int, y: int, file_path: Path) -> None:
+        def _download_and_save(x: int, y: int, file_path: Path) -> bool:
             image = provider.download_tile(x, y, level)
             if image is None:
-                return
+                return False
             if image.shape[:2] != (256, 256):
                 image = cv2.resize(image, (256, 256))
-            cv2.imwrite(str(file_path), image)
+            return bool(cv2.imwrite(str(file_path), image))
 
+        failed_tiles: set[Tuple[int, int]] = set()
         if missing_tiles:
             provider_key = provider_name.upper()
             provider_default = "10" if provider_name.lower() == "google" else "20"
@@ -419,16 +420,35 @@ class TileSystem:
                 f"Downloading {len(missing_tiles)} missing tiles with {workers} workers..."
             )
             with ThreadPoolExecutor(max_workers=workers) as ex:
-                futures = [
-                    ex.submit(_download_and_save, x, y, file_path)
+                futures = {
+                    ex.submit(_download_and_save, x, y, file_path): (x, y)
                     for x, y, file_path in missing_tiles
-                ]
+                }
                 for fut in as_completed(futures):
                     try:
-                        fut.result()
+                        ok = bool(fut.result())
+                        if not ok:
+                            failed_tiles.add(futures[fut])
                     except Exception as e:
                         print(f"CRITICAL: Parallel tile download failed: {e}")
                         raise
+
+        if failed_tiles:
+            _logger.warning(
+                f"Skipped {len(failed_tiles)} tiles with empty/failed responses "
+                f"for provider '{provider_name}' at zoom {level}."
+            )
+
+        if failed_tiles:
+            tiles_metadata = [
+                row for row in tiles_metadata
+                if (int(row["TileX"]), int(row["TileY"])) not in failed_tiles
+            ]
+
+        tiles_metadata = [
+            row for row in tiles_metadata
+            if (output_dir_path / str(row["Filename"])).exists()
+        ]
 
         return tiles_metadata
 

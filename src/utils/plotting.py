@@ -624,9 +624,9 @@ class TrajectoryVisualizer:
     ) -> None:
         """Adds a compact legend in a semi-transparent box.
 
-        The box is placed at the corner furthest from the trajectory
-        centroid so it does not obscure the main content.  Only the
-        region identifier and tile provider are shown.
+        The box is placed near the top-left corner with a small margin
+        so it is unlikely to obscure the main content. Only the region
+        identifier and tile provider are shown.
         """
         h, w = canvas.shape[:2]
         s = max(h, w) / 4096.0
