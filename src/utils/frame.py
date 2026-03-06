@@ -14,7 +14,7 @@ Camera smoothing is applied between frames so the satellite view pans
 and zooms smoothly, making the output watchable as a video.
 
 Activated when ``pair_logging.enabled`` is *True* in the positioning
-config.  Frames are written to ``<output_dir>/composite_frames/``.
+config. Frames are written to ``<output_dir>/frames/``.
 """
 
 from dataclasses import dataclass
@@ -174,13 +174,13 @@ class CompositeFrameRenderer:
             full_query_df: Complete query dataframe with ``Latitude``
                 and ``Longitude`` columns for the trajectory extent.
             output_dir: Parent directory under which the
-                ``composite_frames/`` sub-directory is created.
+                ``frames/`` sub-directory is created.
         """
         self.config = config
         self.map_df = map_df
         self.full_query_df = full_query_df
         self.map_dir = Path(config.data_paths["map_dir"])
-        self.output_dir = output_dir / "composite_frames"
+        self.output_dir = output_dir / "frames"
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.level = int(map_df.iloc[0]["Level"])
@@ -239,9 +239,7 @@ class CompositeFrameRenderer:
                 frame, frame_data, q_scale, q_xo, q_yo, g2p,
             )
 
-            out_path = (
-                self.output_dir / f"composite_{frame_data.frame_idx:04d}.jpg"
-            )
+            out_path = self.output_dir / f"frame_{frame_data.frame_idx:04d}.jpg"
             cv2.imwrite(
                 str(out_path),
                 frame,

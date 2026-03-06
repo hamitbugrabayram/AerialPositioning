@@ -7,7 +7,11 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # Conda initialization (portable)
-if ! command -v conda >/dev/null 2>&1; then
+if command -v conda >/dev/null 2>&1; then
+  eval "$(conda shell.bash hook 2>/dev/null)" || true
+fi
+
+if ! declare -F conda >/dev/null 2>&1; then
   if [[ -n "${CONDA_EXE:-}" ]]; then
     # shellcheck disable=SC1090
     source "$(dirname "$(dirname "$CONDA_EXE")")/etc/profile.d/conda.sh"

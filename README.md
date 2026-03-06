@@ -5,7 +5,7 @@ This repository presents a vision-based positioning process for estimating the h
 
 <div align="center">
   <video src="https://github.com/user-attachments/assets/0a3b3890-8481-44be-b594-5c120c62d465" width="100%" autoplay muted loop playsinline controls>
-    You're browser doesn't support to play the video.
+    Your browser doesn't support playing the video.
   </video>
 </div>
 

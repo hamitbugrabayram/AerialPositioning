@@ -15,7 +15,7 @@ import pandas as pd
 
 from src.core.runner import PositioningRunner
 from src.models.config import PositioningConfig, QueryResult
-from src.utils.composite_frames import CompositeFrameRenderer, FrameData
+from src.utils.frame import CompositeFrameRenderer, FrameData
 from src.utils.logger import get_logger
 from src.utils.plotting import TrajectoryVisualizer
 
@@ -164,6 +164,7 @@ class Evaluator(PositioningRunner):
         results = self._process_eval_queries()
         self._save_results(results)
         self._cleanup_temp_processed_queries()
+        self._cleanup_temp_context_maps()
         self.visualizer.generate_trajectory_plot(results)
         _logger.info("Positioning Complete")
 

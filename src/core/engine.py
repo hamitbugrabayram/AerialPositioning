@@ -260,6 +260,13 @@ class PositioningEngine:
             return map_context
         return bool(map_context.get("enabled", False))
 
+    def _save_map_context_maps(self) -> bool:
+        """Returns whether stitched context maps should be persisted."""
+        map_context = self.config.positioning_params.get("map_context", {})
+        if isinstance(map_context, dict):
+            return bool(map_context.get("save_context_maps", False))
+        return False
+
     def _map_context_coverage_factor(self) -> float:
         """Returns the altitude-to-ground-coverage multiplier.
 
@@ -362,7 +369,8 @@ class PositioningEngine:
 
         map_dir = Path(self.config.data_paths["map_dir"])
         output_dir = Path(self.config.data_paths["output_dir"])
-        context_dir = output_dir / ".tmp_context_maps"
+        context_dir_name = "context_maps" if self._save_map_context_maps() else ".tmp_context_maps"
+        context_dir = output_dir / context_dir_name
         context_dir.mkdir(parents=True, exist_ok=True)
 
         tile_x = int(cast(Any, map_row["TileX"]))

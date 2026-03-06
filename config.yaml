@@ -52,8 +52,9 @@ positioning_params:
     enabled: true
     coverage_factor: 2.0
     max_grid: 3              # max NxN tile grid (3=768px, optimal for matcher)
+    save_context_maps: false # keep stitched context maps after inference
   pair_logging:
-    enabled: true             # composite frame
+    enabled: true             # frame visualization
     save_failed: false
     save_matched: false
     max_unique_pairs: 1
