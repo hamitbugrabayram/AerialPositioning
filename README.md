@@ -5,9 +5,9 @@ This repository presents a vision-based positioning process for estimating the h
 
 <div align="center">
   <p><strong>Region 01 Evaluation</strong></p>
-  <video src="./assets/showcase_region01_google.webm" width="100%" autoplay muted loop playsinline>
-    Your browser doesn't support playing the video.
-  </video>
+  <a href="./assets/showcase_region01_google.webm">
+    <img src="./assets/showcase.gif" width="100%" alt="Aerial positioning visualisation showcase">
+  </a>
 </div>
 
 ## Table of Contents
