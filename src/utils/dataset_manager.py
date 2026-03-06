@@ -5,6 +5,7 @@ preparation, and configuration of drone and satellite imagery datasets.
 """
 
 
+import math
 import os
 import shutil
 from pathlib import Path
@@ -162,19 +163,30 @@ class DatasetManager:
 
                 for _, row in df.iterrows():
                     filename = str(row["filename"])
+                    omega = self._get_telemetry_value(row, "Omega")
+                    kappa = self._get_telemetry_value(row, "Kappa")
+                    phi1 = self._get_telemetry_value(row, "Phi1")
+                    phi2 = self._get_telemetry_value(row, "Phi2")
+                    gimbal_roll = kappa
+                    gimbal_pitch = -90.0 + omega
+                    gimbal_yaw_phi1 = phi1
+                    gimbal_yaw_phi2 = phi2
                     query_metadata.append(
                         {
                             "Filename": filename,
                             "Latitude": self._get_telemetry_value(row, "lat"),
                             "Longitude": self._get_telemetry_value(row, "lon"),
                             "Altitude": self._get_telemetry_value(row, "height"),
-                            "Gimball_Roll": self._get_telemetry_value(row, "Kappa"),
-                            "Gimball_Pitch": -90.0
-                            + self._get_telemetry_value(row, "Omega"),
-                            "Gimball_Yaw": 0.0,
-                            "Flight_Roll": 0.0,
-                            "Flight_Pitch": 0.0,
-                            "Flight_Yaw": self._get_telemetry_value(row, "Phi1"),
+                            "Gimball_Roll": gimbal_roll,
+                            "Gimball_Pitch": gimbal_pitch,
+                            "Gimball_Yaw": gimbal_yaw_phi1,
+                            "Gimball_Yaw_Source": "Phi1",
+                            "Gimball_Yaw_Phi1": gimbal_yaw_phi1,
+                            "Gimball_Yaw_Phi2": gimbal_yaw_phi2,
+                            "Omega": omega,
+                            "Kappa": kappa,
+                            "Phi1": phi1,
+                            "Phi2": phi2,
                         }
                     )
 
@@ -226,35 +238,88 @@ class DatasetManager:
             "map_metadata": str((map_dir / "map.csv").resolve()),
         }
 
-        sample_images = list(query_dir.glob("*.[jJ][pP][gG]"))
-        if not sample_images:
-            raise FileNotFoundError(
-                f"No images found in {query_dir} to detect resolution."
-            )
-
-        img = cv2.imread(str(sample_images[0]))
-        if img is None:
-            raise RuntimeError(
-                f"Failed to read sample image for resolution detection: {sample_images[0]}"
-            )
-
-        h, w = img.shape[:2]
-        if "camera_model" not in config:
-            config["camera_model"] = {}
-        config["camera_model"]["resolution_width"] = int(w)
-        config["camera_model"]["resolution_height"] = int(h)
-
-        if int(w) == 3000:
-            config["camera_model"]["focal_length"] = 4.5
-            config["camera_model"]["hfov_deg"] = 72.0
-
         os.makedirs(str(output_path), exist_ok=True)
         config_file = output_path / "config.yaml"
         self.save_config(config, config_file)
         return config_file
 
+    def auto_zoom_for_region(
+        self,
+        index: int,
+        coverage_factor: float = 2.0,
+    ) -> int:
+        """Computes the optimal zoom level for a region from its altitudes.
+
+        Reads the region's ``photo_metadata.csv``, takes the median
+        altitude and mean latitude, and delegates to
+        :meth:`TileSystem.optimal_zoom_level`.
+
+        Args:
+            index: Integer region index.
+            coverage_factor: Ground-coverage multiplier (default 2.0).
+
+        Returns:
+            Integer zoom level.
+
+        Raises:
+            FileNotFoundError: If the region has not been prepared yet
+                (no ``photo_metadata.csv``).
+        """
+        dataset_dir = self.get_dataset_dir(index)
+        meta_path = dataset_dir / "query" / "photo_metadata.csv"
+
+        if not meta_path.exists():
+            raise FileNotFoundError(
+                f"No metadata for Region {index:02d}. "
+                f"Run '--dataset-prepare {index}' first."
+            )
+
+        df = pd.read_csv(meta_path)
+
+        altitudes = pd.to_numeric(df.get("Altitude", pd.Series(dtype=float)),
+                                  errors="coerce").dropna()
+        latitudes = pd.to_numeric(df.get("Latitude", pd.Series(dtype=float)),
+                                  errors="coerce").dropna()
+
+        median_alt = float(altitudes.median()) if not altitudes.empty else 0.0
+        mean_lat = float(latitudes.mean()) if not latitudes.empty else 0.0
+
+        zoom = TileSystem.optimal_zoom_level(
+            median_alt, mean_lat, coverage_factor=coverage_factor,
+        )
+        _logger.info(
+            f"Region {index:02d}: median altitude {median_alt:.0f}m, "
+            f"latitude {mean_lat:.2f}° → auto zoom {zoom}"
+        )
+        return zoom
+
+    def available_zooms(self, index: int, provider: str) -> List[int]:
+        """Lists zoom levels already downloaded for a region + provider.
+
+        Args:
+            index: Integer region index.
+            provider: Tile provider name (e.g. ``esri``).
+
+        Returns:
+            Sorted list of integer zoom levels found on disk.
+        """
+        dataset_dir = self.get_dataset_dir(index)
+        map_root = dataset_dir / "map" / provider
+        if not map_root.exists():
+            return []
+        zooms: List[int] = []
+        for child in sorted(map_root.iterdir()):
+            if child.is_dir() and child.name.isdigit():
+                if (child / "map.csv").exists():
+                    zooms.append(int(child.name))
+        return zooms
+
     def prepare_region_data(
-        self, index: int, zoom_levels: List[int], provider_names: List[str]
+        self,
+        index: int,
+        zoom_levels: List[int],
+        provider_names: List[str],
+        map_margin_m: float = 1100.0,
     ) -> None:
         """Prepares map tiles for a region across multiple zooms and providers.
 
@@ -262,6 +327,8 @@ class DatasetManager:
             index (int): The integer index of the region.
             zoom_levels (List[int]): List of zoom levels to download.
             provider_names (List[str]): List of tile provider names to use.
+            map_margin_m (float): Margin in meters added around dataset
+                bounds for map tile download. Default is 1100 m.
         """
         dataset_dir = self.prepare_shared_dataset(index)
         region_id = f"{index:02d}"
@@ -275,34 +342,35 @@ class DatasetManager:
                 map_dir = dataset_dir / "map" / provider / str(zoom)
                 os.makedirs(str(map_dir), exist_ok=True)
 
-                if not (map_dir / "map.csv").exists():
-                    lats = df["Latitude"].tolist()
-                    lons = df["Longitude"].tolist()
-                    margin = 0.01
+                lats = df["Latitude"].tolist()
+                lons = df["Longitude"].tolist()
+                margin_km = max(0.0, float(map_margin_m)) / 1000.0
+                margin_lat_deg = margin_km / 111.32
+                mean_lat = (max(lats) + min(lats)) / 2.0
+                cos_lat = max(1e-6, abs(math.cos(math.radians(mean_lat))))
+                margin_lon_deg = margin_km / (111.32 * cos_lat)
 
-                    lat_max = max(lats) + margin
-                    lon_min = min(lons) - margin
-                    lat_min = min(lats) - margin
-                    lon_max = max(lons) + margin
+                lat_max = max(lats) + margin_lat_deg
+                lon_min = min(lons) - margin_lon_deg
+                lat_min = min(lats) - margin_lat_deg
+                lon_max = max(lons) + margin_lon_deg
 
-                    print(
-                        f"  Fetching {provider.upper()} tiles for "
-                        f"Region {region_id} Zoom {zoom}..."
+                print(
+                    f"  Syncing {provider.upper()} tiles for "
+                    f"Region {region_id} Zoom {zoom}..."
+                )
+
+                tiles = TileSystem.retrieve_map_tiles(
+                    lat_max,
+                    lon_min,
+                    lat_min,
+                    lon_max,
+                    zoom,
+                    str(map_dir),
+                    provider_name=provider,
+                )
+
+                if tiles:
+                    pd.DataFrame(tiles).to_csv(
+                        str(map_dir / "map.csv"), index=False
                     )
-
-                    tiles = TileSystem.retrieve_map_tiles(
-                        lat_max,
-                        lon_min,
-                        lat_min,
-                        lon_max,
-                        zoom,
-                        str(map_dir),
-                        provider_name=provider,
-                    )
-
-                    if tiles:
-                        pd.DataFrame(tiles).to_csv(
-                            str(map_dir / "map.csv"), index=False
-                        )
-                else:
-                    _logger.info(f"  Maps already exist: {map_dir}")

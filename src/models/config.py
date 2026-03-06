@@ -62,7 +62,7 @@ class PositioningConfig:
         device: Compute device (cuda, cpu).
         data_paths: Dictionary of data directory paths.
         preprocessing: Preprocessing configuration.
-        camera_model: Camera model parameters for warping.
+        camera_model: Optional camera intrinsics; None when unavailable.
         matcher_weights: Matcher-specific weight paths.
         matcher_params: Matcher-specific parameters.
         ransac_params: RANSAC configuration.
@@ -106,20 +106,9 @@ class PositioningConfig:
             data_paths=config.get("data_paths", {}),
             preprocessing=config.get(
                 "preprocessing",
-                {
-                    "enabled": True,
-                    "steps": ["resize", "warp"],
-                    "resize_target": [1024],
-                    "save_processed": False,
-                    "target_gimbal_pitch": -90.0,
-                    "target_gimbal_roll": 0.0,
-                    "target_gimbal_yaw": 0.0,
-                    "adaptive_yaw": False,
-                },
+                {"save_processed": False},
             ),
-            camera_model=config.get(
-                "camera_model", {"focal_length": 4.5, "hfov_deg": 82.9}
-            ),
+            camera_model=config.get("camera_model"),
             matcher_weights=config.get(
                 "matcher_weights",
                 {
@@ -145,12 +134,20 @@ class PositioningConfig:
                 "save_visualization": True,
                 "sample_interval": 1,
                 "save_frame_sequence": False,
+                "map_context": {
+                    "enabled": False,
+                    "coverage_factor": 2.0,
+                    "max_grid": 5,
+                    "save_context_maps": False,
+                },
                 "adaptive_search": {
+                    "strategy": "ins_simulation",
                     "initial_radius_m": 1000.0,
-                    "max_radius_m": 10000.0,
-                    "growth_factor": 2.0,
-                    "cooldown_factor": 0.5,
-                }
+                    "max_radius_m": 2000.0,
+                    "skip_penalty_m": 200.0,
+                    "ins_noise_sigma_m": 30.0,
+                    "ins_noise_max_m": 100.0,
+                },
             },
             tile_provider=config.get(
                 "tile_provider", {"name": "esri", "cache_dir": "satellite"}

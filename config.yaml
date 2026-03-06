@@ -1,9 +1,5 @@
-matcher_type: gim
+matcher_type: minima
 device: cuda
-
-camera_model:
-  focal_length: 4.5
-  hfov_deg: 82.9
 
 preprocessing:
   save_processed: false
@@ -16,7 +12,7 @@ matcher_weights:
 
   loftr_weights_path: matchers/LoFTR/weights/outdoor_ds.ckpt
 
-  minima_method: xoftr
+  minima_method: sp_lg
   minima_weights_dir: matchers/MINIMA/weights
   minima_xoftr_ckpt: minima_xoftr.ckpt
   minima_loftr_ckpt: minima_loftr.ckpt
@@ -52,11 +48,23 @@ positioning_params:
   save_visualization: false
   save_frame_sequence: false
   sample_interval: 1
+  map_context:
+    enabled: true
+    coverage_factor: 2.0
+    max_grid: 3              # max NxN tile grid (3=768px, optimal for matcher)
+    save_context_maps: false # keep stitched context maps after inference
+  pair_logging:
+    enabled: true             # frame visualization
+    save_failed: false
+    save_matched: false
+    max_unique_pairs: 1
   adaptive_search:
-    initial_radius_m: 1000.0
-    max_radius_m: 10000.0
-    growth_factor: 2.0
-    cooldown_factor: 0.5
+    strategy: ins_simulation   # ins_simulation | adaptive_radius
+    initial_radius_m: 500.0
+    max_radius_m: 1000.0
+    skip_penalty_m: 100.0
+    ins_noise_sigma_m: 30.0   # per-step INS drift std dev (metres)
+    ins_noise_max_m: 150.0    # per-step INS drift hard cap (metres)
 
 tile_provider:
   name: esri

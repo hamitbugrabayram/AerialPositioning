@@ -54,13 +54,9 @@ results/
 results_report.md
 UAV_VisLoc_dataset.zip
 
-# Submodule noise and artifacts
-matchers/*/weights/*
-!matchers/*/weights/download.sh
-matchers/*/__pycache__/
-matchers/*/*.egg-info/
-matchers/*/.git
-matchers/*/.ipynb_checkpoints/
+# Local developer artifacts
+_archive/
+image.png
 
 .vscode/
 .idea/

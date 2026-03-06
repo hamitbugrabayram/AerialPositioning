@@ -316,21 +316,24 @@ class QueryPreprocessor:
     def _apply_warp(self, image: np.ndarray, metadata: Dict[str, Any]) -> np.ndarray:
         """Applies perspective warp to simulate a nadir, north-oriented view.
 
+        Uses gimbal angles from metadata to compute the rotation correction.
+        When explicit camera intrinsics are available (via ``CameraModel``),
+        the intrinsic matrix is built from them.  Otherwise, a reasonable
+        intrinsic matrix is estimated directly from the image dimensions
+        (principal point at center, focal length = ``max(w, h)``).
+
         Args:
             image: The resized NumPy image.
             metadata: Metadata containing 'Gimball_Yaw', 'Gimball_Pitch',
-                'Gimball_Roll', and 'Flight_Yaw'.
+                and 'Gimball_Roll'.
 
         Returns:
             The warped, top-down NumPy image.
 
         Raises:
-            PreprocessingError: If the camera model is missing, dimensions
-                are invalid, or the homography fails.
+            PreprocessingError: If dimensions are invalid or the
+                homography computation fails.
         """
-        if self.camera_model is None:
-            raise PreprocessingError("Camera model required for warping.")
-
         height_orig, width_orig = image.shape[:2]
         if height_orig <= 0 or width_orig <= 0:
             raise PreprocessingError(
@@ -340,20 +343,26 @@ class QueryPreprocessor:
         gimbal_yaw = float(metadata.get("Gimball_Yaw", 0.0))
         gimbal_pitch = float(metadata.get("Gimball_Pitch", -90.0))
         gimbal_roll = float(metadata.get("Gimball_Roll", 0.0))
-        flight_yaw = float(metadata.get("Flight_Yaw", 0.0))
-
-        current_yaw = gimbal_yaw + flight_yaw
+        current_yaw = gimbal_yaw
         current_pitch = gimbal_pitch
         current_roll = gimbal_roll
 
         r_current = _euler_to_rotation_matrix(current_roll, current_pitch, current_yaw)
         r_target = _euler_to_rotation_matrix(_TARGET_ROLL, _TARGET_PITCH, _TARGET_YAW)
 
-        scale_w = width_orig / self.camera_model.resolution_width
-        scale_h = height_orig / self.camera_model.resolution_height
-        k_matrix = _get_intrinsic_matrix(
-            self.camera_model, scale=1.0 / max(scale_w, scale_h)
-        )
+        if self.camera_model is not None:
+            scale_w = width_orig / self.camera_model.resolution_width
+            scale_h = height_orig / self.camera_model.resolution_height
+            k_matrix = _get_intrinsic_matrix(
+                self.camera_model, scale=1.0 / max(scale_w, scale_h)
+            )
+        else:
+            fx = fy = float(max(width_orig, height_orig))
+            cx = width_orig / 2.0
+            cy = height_orig / 2.0
+            k_matrix = np.array(
+                [[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float32
+            )
 
         try:
             homography = k_matrix @ r_current.T @ r_target @ np.linalg.inv(k_matrix)

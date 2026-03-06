@@ -86,12 +86,11 @@ class Runner:
         map_dir = dataset_dir / "map" / provider / str(zoom)
 
         if not map_dir.exists():
-            _logger.info(f"\nERROR: Map directory not found: {map_dir}")
-            print(
-                f"HINT: Run '--dataset-prepare {index} --zoom-levels {zoom} "
+            raise RuntimeError(
+                f"Map directory not found: {map_dir}. "
+                f"Run '--dataset-prepare {index} --zoom-levels {zoom} "
                 f"--tile-provider {provider}' first."
             )
-            sys.exit(1)
 
         exp_folder_name = f"{region_name}_{region_id}_zoom_{zoom}_{provider}"
         output_path = self.results_root / exp_folder_name
@@ -101,10 +100,9 @@ class Runner:
                 output_path, query_dir, map_dir, provider
             )
         except Exception as e:
-            print(
-                f"\nERROR: Failed to generate configuration for {exp_folder_name}: {e}"
-            )
-            sys.exit(1)
+            raise RuntimeError(
+                f"Failed to generate configuration for {exp_folder_name}: {e}"
+            ) from e
 
         _logger.info(f"Running: {exp_folder_name}")
 
@@ -120,16 +118,14 @@ class Runner:
         try:
             subprocess.run(cmd, check=True)
         except subprocess.CalledProcessError as e:
-            _logger.info(f"\nERROR: Visual Positioning process failed for {exp_folder_name}")
-            print(
-                f"Details: Command '{' '.join(cmd)}' returned exit status {e.returncode}"
-            )
-            sys.exit(1)
+            raise RuntimeError(
+                f"Visual positioning failed for {exp_folder_name}. "
+                f"Command '{' '.join(cmd)}' returned exit status {e.returncode}."
+            ) from e
         except Exception as e:
-            print(
-                f"\nERROR: An unexpected error occurred while starting the process: {e}"
-            )
-            sys.exit(1)
+            raise RuntimeError(
+                f"Unexpected error while running {exp_folder_name}: {e}"
+            ) from e
 
     def main(self) -> None:
         """Executes CLI flow for dataset preparation, evaluation, and reporting.
@@ -160,7 +156,8 @@ class Runner:
             "--zoom-levels",
             type=int,
             nargs="+",
-            help="Zoom levels (Mandatory for eval/prepare)",
+            help="Zoom levels.  When omitted the optimal level is "
+            "computed automatically from each region's median altitude.",
         )
         parser.add_argument(
             "--tile-provider",
@@ -169,19 +166,20 @@ class Runner:
             choices=["esri", "google"],
             help="Map sources (Mandatory for eval/prepare)",
         )
-
+        parser.add_argument(
+            "--map-margin",
+            type=float,
+            default=1000.0,
+            help="Extra download margin around dataset GT bounds in meters "
+            "(default: 1000). Example: --map-margin 1000 downloads "
+            "~1 km beyond the dataset bbox.",
+        )
         args = parser.parse_args()
 
         prep_ids = self._parse_region_ids(args.dataset_prepare)
         eval_ids = self._parse_region_ids(args.dataset_eval)
         summary_ids = self._parse_region_ids(args.eval_summary)
-
         if prep_ids or eval_ids:
-            if not args.zoom_levels:
-                print(
-                    "ERROR: --zoom-levels is mandatory for preparation and evaluation."
-                )
-                sys.exit(1)
             if not args.tile_provider:
                 print(
                     "ERROR: --tile-provider is mandatory for preparation and evaluation."
@@ -192,8 +190,15 @@ class Runner:
             for i in prep_ids:
                 _logger.info(f"Preparing Region {i}")
                 try:
+                    if args.zoom_levels:
+                        zooms = args.zoom_levels
+                    else:
+                        self.dataset_manager.prepare_shared_dataset(i)
+                        z = self.dataset_manager.auto_zoom_for_region(i)
+                        zooms = [z]
                     self.dataset_manager.prepare_region_data(
-                        i, args.zoom_levels, args.tile_provider
+                        i, zooms, args.tile_provider,
+                        map_margin_m=args.map_margin,
                     )
                 except Exception as e:
                     _logger.info(f"Error during preparation for Region {i}: {e}")
@@ -202,8 +207,40 @@ class Runner:
         if eval_ids:
             for i in eval_ids:
                 for p in args.tile_provider:
-                    for z in args.zoom_levels:
-                        self.run_dataset_eval(i, z, p)
+                    if args.zoom_levels:
+                        zooms = args.zoom_levels
+                    else:
+                        try:
+                            self.dataset_manager.prepare_shared_dataset(i)
+                            target_zoom = self.dataset_manager.auto_zoom_for_region(i)
+                        except Exception:
+                            _logger.info(
+                                f"Cannot determine zoom for Region {i}. "
+                                f"Use --zoom-levels or run --dataset-prepare first."
+                            )
+                            sys.exit(1)
+
+                        available = self.dataset_manager.available_zooms(i, p)
+                        if not available:
+                            zooms = [target_zoom]
+                        elif target_zoom in available:
+                            zooms = [target_zoom]
+                        else:
+                            nearest = min(
+                                available,
+                                key=lambda z: (abs(z - target_zoom), -z),
+                            )
+                            _logger.info(
+                                f"Region {i:02d} {p}: auto zoom {target_zoom} "
+                                f"not downloaded, using nearest available {nearest}."
+                            )
+                            zooms = [nearest]
+                    for z in zooms:
+                        try:
+                            self.run_dataset_eval(i, z, p)
+                        except Exception as e:
+                            _logger.info(f"Error during evaluation for Region {i}: {e}")
+                            sys.exit(1)
 
         if summary_ids is not None:
             try:
@@ -213,7 +250,11 @@ class Runner:
                 sys.exit(1)
 
         if not any(
-            [args.dataset_prepare, args.dataset_eval, args.eval_summary is not None]
+            [
+                args.dataset_prepare,
+                args.dataset_eval,
+                args.eval_summary is not None,
+            ]
         ):
             parser.print_help()
 

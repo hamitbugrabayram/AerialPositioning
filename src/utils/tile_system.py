@@ -9,8 +9,10 @@ Reference:
 
 
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from itertools import chain
-from math import atan, cos, exp, floor, log, pi, sin
+from math import atan, ceil, cos, exp, floor, log, log2, pi, sin
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -90,6 +92,88 @@ class TileSystem:
             * TileSystem.EARTH_RADIUS
             / TileSystem.map_size(level)
         )
+
+    @staticmethod
+    def optimal_zoom_level(
+        altitude_m: float,
+        latitude: float,
+        coverage_factor: float = 2.0,
+        max_grid: int = 11,
+        min_detail_mpp: float = 2.0,
+        high_altitude_threshold_m: float = 1500.0,
+        min_level: int = 15,
+        max_level: int = 21,
+    ) -> int:
+        """Computes the best zoom level for a given flight altitude.
+
+        Selects the highest zoom level (most detail) where the adaptive
+        tile grid stays at or below ``max_grid`` tiles.  Higher zoom
+        means better tile detail; the adaptive stitching in the engine
+        handles larger grids at runtime.
+
+        The relationship is::
+
+            tile_coverage = ground_resolution(lat, level) * 256
+            grid_needed   = ceil(altitude * coverage_factor / tile_coverage)
+
+        We want ``grid_needed <= max_grid``, solved for *level*::
+
+            level = floor(log2(
+                cos(lat) * 2 * pi * R * max_grid
+                / (altitude * coverage_factor)
+            ))
+
+        Args:
+            altitude_m: Median / representative drone altitude in metres.
+            latitude: Representative latitude in degrees.
+            coverage_factor: Ground-coverage multiplier (same as in
+                ``map_context.coverage_factor``).
+            max_grid: Maximum allowed grid dimension (default 11,
+                i.e. up to 11x11 = 2816 px composite).
+            min_detail_mpp: Detail floor in meters-per-pixel used only for
+                high-altitude datasets. If the computed zoom is too coarse
+                (larger m/px than this value), one or more zoom levels are
+                promoted to preserve texture detail.
+            high_altitude_threshold_m: Altitude threshold above which the
+                detail floor check is applied.
+            min_level: Lowest zoom level to return.
+            max_level: Highest zoom level to return.
+
+        Returns:
+            Integer zoom level clamped to [min_level, max_level].
+        """
+        if altitude_m <= 0:
+            return max_level
+
+        lat_rad = abs(latitude) * pi / 180.0
+        cos_lat = cos(lat_rad) if abs(latitude) < 85.0 else 0.003
+
+        numerator = cos_lat * 2.0 * pi * TileSystem.EARTH_RADIUS * max_grid
+        denominator = altitude_m * coverage_factor
+
+        if denominator <= 0 or numerator <= 0:
+            return max_level
+
+        level = int(floor(log2(numerator / denominator)))
+        level = max(min_level, min(level, max_level))
+
+        if (
+            min_detail_mpp > 0
+            and altitude_m >= high_altitude_threshold_m
+            and level < max_level
+        ):
+            detail_level = int(
+                ceil(
+                    log2(
+                        (cos_lat * 2.0 * pi * TileSystem.EARTH_RADIUS)
+                        / (256.0 * min_detail_mpp)
+                    )
+                )
+            )
+            detail_level = max(min_level, min(detail_level, max_level))
+            level = max(level, detail_level)
+
+        return level
 
     @staticmethod
     def map_scale(lat: float, level: int, screen_dpi: float) -> float:
@@ -283,25 +367,15 @@ class TileSystem:
             f"{upper_left_tile} to {lower_right_tile}..."
         )
 
+        missing_tiles: List[Tuple[int, int, Path]] = []
+
         for y in y_range:
             for x in x_range:
                 filename = f"tile_{provider_name}_{level}_{x}_{y}.jpg"
                 file_path = output_dir_path / filename
 
                 if not file_path.exists():
-                    try:
-                        image = provider.download_tile(x, y, level)
-                        if image is not None:
-                            if image.shape[:2] == (256, 256):
-                                cv2.imwrite(str(file_path), image)
-                            else:
-                                image = cv2.resize(image, (256, 256))
-                                cv2.imwrite(str(file_path), image)
-                    except Exception as e:
-                        print(
-                            f"CRITICAL: Failed to download tile {x},{y} at level {level}: {e}"
-                        )
-                        raise
+                    missing_tiles.append((x, y, file_path))
 
                 lat1, lon1, lat2, lon2 = TileSystem.get_tile_bounds(x, y, level)
                 quad_key = TileSystem.tile_xy_to_quadkey(x, y, level)
@@ -320,6 +394,61 @@ class TileSystem:
                         "Provider": provider_name,
                     }
                 )
+
+        def _download_and_save(x: int, y: int, file_path: Path) -> bool:
+            image = provider.download_tile(x, y, level)
+            if image is None:
+                return False
+            if image.shape[:2] != (256, 256):
+                image = cv2.resize(image, (256, 256))
+            return bool(cv2.imwrite(str(file_path), image))
+
+        failed_tiles: set[Tuple[int, int]] = set()
+        if missing_tiles:
+            provider_key = provider_name.upper()
+            provider_default = "10" if provider_name.lower() == "google" else "20"
+            workers_raw = os.getenv(
+                f"TILE_DOWNLOAD_WORKERS_{provider_key}",
+                os.getenv("TILE_DOWNLOAD_WORKERS", provider_default),
+            )
+            try:
+                workers = max(1, int(workers_raw))
+            except ValueError:
+                workers = int(provider_default)
+            workers = min(workers, len(missing_tiles))
+            print(
+                f"Downloading {len(missing_tiles)} missing tiles with {workers} workers..."
+            )
+            with ThreadPoolExecutor(max_workers=workers) as ex:
+                futures = {
+                    ex.submit(_download_and_save, x, y, file_path): (x, y)
+                    for x, y, file_path in missing_tiles
+                }
+                for fut in as_completed(futures):
+                    try:
+                        ok = bool(fut.result())
+                        if not ok:
+                            failed_tiles.add(futures[fut])
+                    except Exception as e:
+                        print(f"CRITICAL: Parallel tile download failed: {e}")
+                        raise
+
+        if failed_tiles:
+            _logger.warning(
+                f"Skipped {len(failed_tiles)} tiles with empty/failed responses "
+                f"for provider '{provider_name}' at zoom {level}."
+            )
+
+        if failed_tiles:
+            tiles_metadata = [
+                row for row in tiles_metadata
+                if (int(row["TileX"]), int(row["TileY"])) not in failed_tiles
+            ]
+
+        tiles_metadata = [
+            row for row in tiles_metadata
+            if (output_dir_path / str(row["Filename"])).exists()
+        ]
 
         return tiles_metadata
 

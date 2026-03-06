@@ -98,6 +98,7 @@ class PositioningRunner:
         results = self._process_queries()
         self._save_results(results)
         self._cleanup_temp_processed_queries()
+        self._cleanup_temp_context_maps()
         _logger.info("\nComplete")
 
     def _validate_paths(self) -> None:
@@ -183,7 +184,6 @@ class PositioningRunner:
             "Gimball_Yaw",
             "Gimball_Pitch",
             "Gimball_Roll",
-            "Flight_Yaw",
         ]
         rm = [
             "Filename",
@@ -432,5 +432,15 @@ class PositioningRunner:
         if self.config.preprocessing.get("save_processed", False):
             return
         tmp_dir = self.assets_dir / ".tmp_processed_queries"
+        if tmp_dir.exists():
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    def _cleanup_temp_context_maps(self) -> None:
+        """Removes runtime-only stitched context maps when persistence is disabled."""
+        if self.assets_dir is None or self.engine is None:
+            return
+        if self.engine._save_map_context_maps():
+            return
+        tmp_dir = self.assets_dir / ".tmp_context_maps"
         if tmp_dir.exists():
             shutil.rmtree(tmp_dir, ignore_errors=True)
