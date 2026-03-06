@@ -4,7 +4,8 @@
 This repository presents a vision-based positioning process for estimating the horizontal position (latitude and longitude) of an aerial platform in GNSS-denied environments. Given only an initial starting position, the method matches onboard imagery against pre-existing satellite map tiles to produce coordinate estimates purely from visual information. To improve cross-view consistency, the process uses aerial vehicle attitude information to rectify oblique camera views into a nadir-oriented perspective aligned with satellite imagery.
 
 <div align="center">
-  <video src="https://github.com/user-attachments/assets/0a3b3890-8481-44be-b594-5c120c62d465" width="100%" autoplay muted loop playsinline controls>
+  <p><strong>Region 01 Evaluation</strong></p>
+  <video src="./assets/showcase_region01_google.webm" width="100%" autoplay muted loop playsinline>
     Your browser doesn't support playing the video.
   </video>
 </div>
