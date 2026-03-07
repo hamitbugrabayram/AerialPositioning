@@ -35,7 +35,7 @@ class ReportGenerator:
         """
         self.project_root = project_root
         self.results_root = results_root
-        self.summary_md = project_root / "results_report.md"
+        self.summary_md = results_root / "report.md"
 
     def _parse_experiment_name(self, folder_name: str) -> Dict[str, Any]:
         """Extracts region/provider/zoom hints from experiment folder name.
@@ -203,6 +203,9 @@ class ReportGenerator:
             "MedianErrorM": safe_stat(float(errors.median()))
             if not errors.empty
             else float("nan"),
+            "StdErrorM": safe_stat(float(errors.std(ddof=1)))
+            if len(errors) > 1
+            else float("nan"),
             "P90ErrorM": safe_stat(float(errors.quantile(0.9)))
             if not errors.empty
             else float("nan"),
@@ -285,8 +288,8 @@ class ReportGenerator:
                 "",
                 "## Experiment Table",
                 "",
-                "| Region | Provider | Zoom | Matcher | Frames | Success | Rate | Mean Err (m) | P90 Err (m) | Mean Inliers | Mean Time (s) |",
-                "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
+                "| Region | Provider | Zoom | Matcher | Frames | Success | Rate | Mean Err (m) | Median Err (m) | Std Err (m) | P90 Err (m) | Mean Inliers | Mean Time (s) |",
+                "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
             ]
         )
 
@@ -296,7 +299,8 @@ class ReportGenerator:
                 f"{row.get('Zoom', 'N/A')} | {row.get('Matcher', 'N/A')} | "
                 f"{row.get('TotalFrames', 0)} | {row.get('SuccessfulFrames', 0)} | "
                 f"{self._fmt(row.get('SuccessRatePct'), 2, '%')} | "
-                f"{self._fmt(row.get('MeanErrorM'), 2)} | {self._fmt(row.get('P90ErrorM'), 2)} | "
+                f"{self._fmt(row.get('MeanErrorM'), 2)} | {self._fmt(row.get('MedianErrorM'), 2)} | "
+                f"{self._fmt(row.get('StdErrorM'), 2)} | {self._fmt(row.get('P90ErrorM'), 2)} | "
                 f"{self._fmt(row.get('MeanInliers'), 1)} | {self._fmt(row.get('MeanMatchTimeS'), 3)} |"
             )
 
@@ -308,6 +312,7 @@ class ReportGenerator:
                 TotalFrames=("TotalFrames", "sum"),
                 SuccessfulFrames=("SuccessfulFrames", "sum"),
                 MeanErrorM=("MeanErrorM", "mean"),
+                StdErrorM=("StdErrorM", "mean"),
                 MeanInliers=("MeanInliers", "mean"),
                 MeanMatchTimeS=("MeanMatchTimeS", "mean"),
             )
@@ -319,8 +324,8 @@ class ReportGenerator:
 
         lines.extend(
             [
-                "| Provider | Experiments | Frames | Success | Rate | Mean Err (m) | Mean Inliers | Mean Time (s) |",
-                "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
+                "| Provider | Experiments | Frames | Success | Rate | Mean Err (m) | Mean Std Err (m) | Mean Inliers | Mean Time (s) |",
+                "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
             ]
         )
         for row in provider_agg.to_dict(orient="records"):
@@ -329,6 +334,7 @@ class ReportGenerator:
                 f"{int(row.get('TotalFrames', 0))} | {int(row.get('SuccessfulFrames', 0))} | "
                 f"{self._fmt(float(row.get('SuccessRatePct', 0.0)), 2, '%')} | "
                 f"{self._fmt(float(row.get('MeanErrorM', float('nan'))), 2)} | "
+                f"{self._fmt(float(row.get('StdErrorM', float('nan'))), 2)} | "
                 f"{self._fmt(float(row.get('MeanInliers', float('nan'))), 1)} | "
                 f"{self._fmt(float(row.get('MeanMatchTimeS', float('nan'))), 3)} |"
             )
@@ -346,7 +352,7 @@ class ReportGenerator:
                     f"- Device: {row.get('Device', 'N/A')}",
                     f"- Frames: {row.get('TotalFrames', 0)}",
                     f"- Success: {row.get('SuccessfulFrames', 0)} / {row.get('TotalFrames', 0)} ({self._fmt(row.get('SuccessRatePct'), 2, '%')})",
-                    f"- Error Mean/Median/P90/Max (m): {self._fmt(row.get('MeanErrorM'), 2)} / {self._fmt(row.get('MedianErrorM'), 2)} / {self._fmt(row.get('P90ErrorM'), 2)} / {self._fmt(row.get('MaxErrorM'), 2)}",
+                    f"- Error Mean/Median/Std/P90/Max (m): {self._fmt(row.get('MeanErrorM'), 2)} / {self._fmt(row.get('MedianErrorM'), 2)} / {self._fmt(row.get('StdErrorM'), 2)} / {self._fmt(row.get('P90ErrorM'), 2)} / {self._fmt(row.get('MaxErrorM'), 2)}",
                     f"- Mean Inliers: {self._fmt(row.get('MeanInliers'), 1)}",
                     f"- Mean Match Time (s): {self._fmt(row.get('MeanMatchTimeS'), 3)}",
                     f"- Mean Candidate Maps: {self._fmt(row.get('MeanCandidateMaps'), 1)}",
@@ -417,6 +423,8 @@ class ReportGenerator:
             "SuccessfulFrames",
             "SuccessRatePct",
             "MeanErrorM",
+            "MedianErrorM",
+            "StdErrorM",
             "P90ErrorM",
             "MeanInliers",
             "MeanMatchTimeS",

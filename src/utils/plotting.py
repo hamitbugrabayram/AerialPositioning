@@ -149,9 +149,9 @@ class TrajectoryVisualizer:
 
         self._plot_failed_markers(results)
 
-        plt.title(f"Visual Positioning - Frame: {len(results)}")
-        plt.xlabel("Longitude")
-        plt.ylabel("Latitude")
+        plt.title("Visual Positioning Trajectory")
+        plt.xlabel("Longitude (deg)")
+        plt.ylabel("Latitude (deg)")
         plt.legend(loc="best")
         plt.gca().set_aspect("equal", adjustable="datalim")
         plt.grid(True, alpha=0.3)

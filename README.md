@@ -3,10 +3,11 @@
 
 This repository presents a vision-based positioning process for estimating the horizontal position (latitude and longitude) of an aerial platform in GNSS-denied environments. Given only an initial starting position, the method matches onboard imagery against pre-existing satellite map tiles to produce coordinate estimates purely from visual information. To improve cross-view consistency, the process uses aerial vehicle attitude information to rectify oblique camera views into a nadir-oriented perspective aligned with satellite imagery.
 
-<div align="center">
-  <p><strong>Example Match</strong></p>
-  <img src="./assets/showcase.gif" width="100%" alt="Region 01 evaluation match example">
-</div>
+<p align="center">
+  <a href="https://www.youtube.com/playlist?list=PL1iuXNnG1vnMdXU7XmagU-2MMkmULcEcU">
+    <img src="./assets/showcase.gif" alt="Region 01 evaluation match example">
+  </a>
+</p>
 
 ## Table of Contents
 - [Environment Setup and Usage](#environment-setup-and-usage)
@@ -20,7 +21,17 @@ This repository presents a vision-based positioning process for estimating the h
 
 ### 1. Environment Setup
 
-Use Python 3.9 with dependencies from `requirements.txt`. For complete matcher support, clone with `--recursive` and download the required model weights.
+Use Python 3.9 with dependencies from `requirements.txt`. For complete matcher support, clone with `--recursive` because the repository includes matcher submodules. The current default configuration in `config.yaml` uses the `minima` matcher, while the codebase also supports `lightglue`, `loftr`, and `gim`.
+
+```bash
+git clone --recursive REPO_URL
+cd AerialPositioning
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Download the required matcher weights into the paths referenced under `matcher_weights` in `config.yaml` before running evaluation.
 
 ### 2. Dataset and Directory Layout
 
@@ -61,7 +72,7 @@ python runner.py --dataset-eval 11 --zoom-levels 16 --tile-provider google esri
 python runner.py --dataset-prepare 1 2 5 11 --tile-provider google esri --map-margin 5000
 
 # Aggregate reports
-python runner.py --eval-summary all
+python runner.py --eval-results all
 ```
 
 `--zoom-levels` is optional for both prepare and eval. If omitted, `runner.py` computes an optimal zoom from each region's median altitude and latitude. During eval, if that zoom is not available on disk, the nearest downloaded zoom is used.
@@ -70,9 +81,9 @@ python runner.py --eval-summary all
 
 ### Pipeline Overview
 *   **Offline Tile Retrieval:** A multi-provider retrieval module pre-downloads and caches georeferenced tiles (ESRI/Google) before runtime.
-*   **Query Preprocessing:** Drone images are resized and perspective-warped to a nadir, north-oriented view using only onboard IMU/gimbal sensor readings (roll, pitch, yaw).
-*   **Adaptive Tile Stitching:** Neighbouring satellite tiles are composed into an NxN grid based on barometric altitude and zoom level so the reference image covers the drone's estimated ground footprint.
-*   **INS-Guided Adaptive Search:** A simulated INS propagates the search center along the drone's trajectory using GT-derived displacement vectors (proxy for IMU dead-reckoning) with per-step Gaussian drift. Each frame is tried once; on failure it is skipped (+200 m radius penalty); on success the INS snaps to the visual fix and the radius resets.
+*   **Query Preprocessing:** Drone images are resized and perspective-warped to a nadir, north-oriented view using only onboard attitude/gimbal telemetry (roll, pitch, yaw).
+*   **Adaptive Tile Stitching:** Neighbouring satellite tiles are composed into an `N x N` grid based on barometric altitude and zoom level so the reference image covers the drone's estimated ground footprint.
+*   **INS-Guided Adaptive Search:** A simulated INS propagates the search center along the drone's trajectory using GT-derived displacement vectors (proxy for IMU dead-reckoning) with bounded random per-step drift. Each frame is tried once; on failure it is skipped and the search radius grows according to the configured penalty; on success the INS snaps to the visual fix and the radius resets.
 *   **Deep Matching and Geometric Validation:** Transformer-based correspondences are validated through RANSAC and geometric plausibility constraints.
 
 ### 1. Offline Tile Retrieval
@@ -81,47 +92,80 @@ Satellite maps are downloaded offline prior to execution. A decoupled tile retri
 ### 2. Query Preprocessing (Perspective Rectification)
 Oblique UAV imagery is rectified to a nadir (top-down), north-facing view to establish geometric comparability with ortho-rectified satellite tiles.
 
-The preprocessing pipeline uses **only onboard sensor data** (no GNSS/GT coordinates):
+The preprocessing pipeline uses **only onboard telemetry**:
 
-1. **Resize** to a standard dimension (max 768px).
-2. **Perspective warp** using gimbal angles from the IMU:
-   - **Yaw** (Phi1): heading direction from the gimbal encoder.
-   - **Pitch**: elevation angle from the gimbal encoder.
-   - **Roll**: bank angle from the gimbal encoder.
+1. **Resize** to a standard dimension (longest side 1024 px).
+2. **Perspective warp** using the prepared telemetry-derived orientation fields:
+   - **Yaw**: `Phi1` (stored as `Gimball_Yaw`, with runtime fallback to `Phi2` if needed).
+   - **Pitch**: `-90° + Omega`.
+   - **Roll**: `Kappa`.
 
-The intrinsic matrix $K$ is estimated from image dimensions ($f = \max(w, h)$, principal point at center) since real camera intrinsics are not available in the dataset. The warp homography is:
+Since calibrated camera intrinsics are not available in the dataset, the intrinsic matrix is approximated from the image dimensions as:
 
-$$H_{warp} = K \cdot R_{current}^T \cdot R_{nadir} \cdot K^{-1}$$
+$$
+\mathbf{K} =
+\begin{bmatrix}
+f & 0 & c_x \\
+0 & f & c_y \\
+0 & 0 & 1
+\end{bmatrix},
+\qquad
+f = \max(w, h),
+\qquad
+(c_x, c_y) = \left(\frac{w}{2}, \frac{h}{2}\right).
+$$
 
-where $R_{current}$ is built from the gimbal Euler angles and $R_{nadir}$ targets a straight-down, north-aligned view ($\text{pitch} = -90°$, $\text{yaw} = 0°$, $\text{roll} = 0°$).
+The rectifying homography is then:
+
+$$
+\mathbf{H}_{\mathrm{warp}} = \mathbf{K}\,\mathbf{R}_{\mathrm{current}}^{\top}\,\mathbf{R}_{\mathrm{nadir}}\,\mathbf{K}^{-1}.
+$$
+
+Here, $\mathbf{R}_{\mathrm{current}}$ is formed from the measured gimbal Euler angles, while $\mathbf{R}_{\mathrm{nadir}}$ denotes the target nadir-facing orientation with `pitch = -90°`, `yaw = 0°`, and `roll = 0°`.
 
 ### 3. Adaptive Tile Stitching
-A single 256x256 satellite tile may not cover the drone's full field of view, especially at high altitudes. The engine computes an adaptive grid size from:
+A single `256 x 256` satellite tile may not cover the drone's full field of view, especially at high altitudes. The engine computes an adaptive grid size from:
 
 - **Barometric altitude** and a coverage factor.
 - **Map tile latitude** (from the tile's own georeferencing).
 - **Zoom level** (determines tile ground resolution).
 
+Let the single-tile ground coverage be
+
 $$
-g = \min(\lceil hc/t \rceil,\ g_{\max})
+t(\phi, z) = 256\,r(\phi, z),
 $$
 
-where $h$ is altitude, $c$ is coverage factor, $t$ is tile ground coverage, and
-$g_{\max}$ is the configured maximum grid size.
+where $r(\phi, z)$ is the Web Mercator ground resolution in metres per pixel. The required grid size is computed as
 
-With `max_grid=3`, the composite is 768x768 px (3x3 tiles), which matches the matcher's internal resize target and preserves detail. Missing edge tiles are filled with neutral gray.
+$$
+n = \left\lceil \frac{h\,c}{t(\phi, z)} \right\rceil,
+\qquad
+g = \min\bigl(g_{\max}, \max(1, n)\bigr).
+$$
+
+In the implementation, an even value is promoted to the next odd value so the stitched map stays centered on the reference tile. In practice, `max_grid` is configured as an odd integer (current root config: `3`; fallback default: `5`). Here, $g$ is the grid dimension in tiles, $h$ is the barometric altitude, $c$ is the coverage factor, $\phi$ is latitude, and $z$ is zoom level.
+
+With `max_grid=3`, the composite is `768 x 768` px (`3 x 3` tiles), which matches the matcher's internal resize target and preserves detail. Missing edge tiles are filled with neutral gray.
 
 ### 4. Automatic Zoom Selection
 When `--zoom-levels` is omitted, zoom is selected automatically with:
 
 $$
-z_{\mathrm{base}} = \lfloor \log_2(\cos(\phi)\,2\pi R\,g_{\max}/hc) \rfloor
+z_{\mathrm{base}} = \left\lfloor \log_2\!\left(\frac{\cos(\phi)\,2\pi R\,g_{\max}}{h\,c}\right) \right\rfloor,
 $$
 
-where $\phi$ is latitude, $R$ is Earth radius, and $h,c,g_{\max}$ are defined
-as above.
+where $\phi$ is latitude, $R$ is the Earth radius, and $h$, $c$, and $g_{\max}$ are defined as above.
 
-To avoid overly coarse map detail at high altitude, a detail floor is applied (`min_detail_mpp=2.0`, activated for altitude >= 1500 m). In the current full evaluation, selected zoom levels are:
+For high-altitude sequences, a detail floor is also enforced through the meters-per-pixel constraint
+
+$$
+z_{\mathrm{detail}} = \left\lceil \log_2\!\left(\frac{\cos(\phi)\,2\pi R}{256\,d_{\min}}\right) \right\rceil,
+$$
+
+and the final zoom is chosen as the larger of $z_{\mathrm{base}}$ and $z_{\mathrm{detail}}$, then clamped to the configured zoom range.
+
+To avoid overly coarse map detail at high altitude, a detail floor is applied (`min_detail_mpp=2.0`, activated for altitude `>= 1500 m`). In the current full evaluation, selected zoom levels are:
 
 | Region IDs | Selected Zoom |
 | :--- | :---: |
@@ -133,14 +177,21 @@ To avoid overly coarse map detail at high altitude, a detail floor is applied (`
 
 Two search strategies are available, selected via the `strategy` key under `adaptive_search` in `config.yaml`:
 
-#### `ins_simulation` (default)
+#### `ins_simulation`
 
-The search center is propagated by a **simulated INS** that uses GT-derived displacement vectors as a proxy for accelerometer/gyro integration (in a real system an onboard IMU would supply these measurements). Per-step Gaussian noise ($\sigma = 30\text{ m}$, capped at $100\text{ m}$) simulates sensor drift that accumulates between visual fixes.
+The search center is propagated by a **simulated INS** that uses GT-derived displacement vectors as a proxy for accelerometer/gyro integration. In a real deployment, these motion increments would be supplied by the onboard IMU. To emulate accumulated inertial drift, the implementation samples a random direction and a bounded half-normal drift magnitude:
+
+$$
+m_t = \min\bigl(|\mathcal{N}(0, \sigma^2)|, \epsilon_{\max}\bigr),
+$$
+
+then converts that magnitude into a latitude/longitude perturbation with a uniformly random bearing. In the reported experiments, $\sigma = 30\,\mathrm{m}$ and $\epsilon_{\max} = 150\,\mathrm{m}$.
 
 Each frame is attempted **once** at the current radius around the INS-predicted position:
 
-* **On failure:** the frame is skipped and the radius grows linearly: $r \leftarrow \min(r + p,\; r_{max})$. The INS continues dead-reckoning.
-* **On success:** the INS position snaps to the matched coordinates (visual correction) and the radius resets to $r_0$.
+* **On failure:** the frame is skipped and the search radius is updated as $r_{t+1} = \min(r_t + p, r_{\max})$, while the INS continues dead-reckoning.
+
+* **On success:** the INS state is corrected by the visual estimate and the radius is reset as $r_{t+1} = r_0$.
 
 #### `adaptive_radius`
 
@@ -156,26 +207,26 @@ This mode does not use displacement vectors or noise simulation. It is useful fo
 | Parameter | Default | Description |
 | :--- | :---: | :--- |
 | `strategy` | `ins_simulation` | `ins_simulation` or `adaptive_radius` |
-| `initial_radius_m` | 1000 | Starting search radius |
-| `max_radius_m` | 2000 | Maximum allowed search radius |
-| `skip_penalty_m` | 200 | Radius increase per skipped frame |
-| `ins_noise_sigma_m` | 30 | Per-step INS drift std dev (INS mode only) |
-| `ins_noise_max_m` | 100 | Per-step INS drift hard cap (INS mode only) |
+| `initial_radius_m` | 500 | Starting search radius |
+| `max_radius_m` | 1000 | Maximum allowed search radius |
+| `skip_penalty_m` | 100 | Radius increase per skipped frame |
+| `ins_noise_sigma_m` | 30 | Per-step INS drift std dev |
+| `ins_noise_max_m` | 150 | Per-step INS drift hard cap |
 
 ### 6. Deep Matching and Geometric Verification
-Dense or semi-dense correspondences are computed using the MINIMA framework (SuperPoint + LightGlue). A planar homography $H$ between query and reference tile is then estimated via RANSAC. Acceptance is conditioned on stability checks, including a determinant constraint ($|\det H| \approx 1$) for near-rigid behavior, image-boundary consistency of projected corners, and non-degeneracy of the estimated transformation.
+Dense or semi-dense correspondences are computed using the MINIMA framework (SuperPoint + LightGlue). A planar homography $\mathbf{H}$ between the query image and the reference map composite is then estimated with RANSAC. Acceptance is conditioned on a minimum inlier count together with geometric plausibility checks that reject singular, numerically unstable, or implausible transforms; this includes validating the projected query footprint area and rejecting predictions whose transformed center falls outside a relaxed map boundary.
 
 ## Evaluation Setup
 
-The results reported below correspond to the following setup:
+The results reported below correspond to the documented evaluation setup used for this repository snapshot:
 
 *   **Matcher:** MINIMA (SuperPoint + LightGlue).
 *   **Tile Providers:** Google and ESRI (same region set evaluated on both).
 *   **Preprocessing:** Resize + gimbal warp (Phi1 as yaw, estimated K from image dims).
 *   **Zoom Policy:** Auto zoom enabled (`--zoom-levels` omitted during eval).
-*   **Map Context:** Adaptive NxN grid stitching (`coverage_factor=2.0`, `max_grid=3`).
+*   **Map Context:** Adaptive `N x N` grid stitching (`coverage_factor=2.0`, `max_grid=3`).
 *   **Temporal Sampling:** `sample_interval=1` (all frames evaluated).
-*   **Search Strategy:** INS-guided skip-and-grow (`initial=1000m`, `max=2000m`, `skip_penalty=200m`, INS noise `sigma=30m`, cap `100m/step`).
+*   **Search Strategy:** INS-guided skip-and-grow with a 500 m starting radius and logged fallback radii reported per experiment in the stored CSV outputs.
 *   **Geometric Acceptance:** `min_inliers_for_success=50`.
 
 ## Results
@@ -183,6 +234,7 @@ The results reported below correspond to the following setup:
 ### Overall Results
 
 *   **Evaluation scope:** 22 experiments across 11 regions with 2 map providers.
+*   **Overall success rate:** 77.69% across all 13,544 evaluated frames.
 *   **Provider comparison:** Google has higher success in 8 regions, ESRI in 2 regions, and 1 region is tied.
 *   **Best performance:** Region 03 and Region 04 reach 100% success with Google.
 *   **Most difficult cases:** Region 07 fails for both providers; Region 10 remains low on both.
@@ -195,7 +247,7 @@ You can watch the per-region evaluation outputs from this playlist:
 
 The table below includes every evaluated region (01-11) for both tile providers.
 
-| Region (ID) | Zoom | ESRI Success | Google Success | ESRI Median Err (m) | Google Median Err (m) | Better Provider (Success) |
+| Region (ID) | Zoom | ESRI Success | Google Success | ESRI Median Err (m) | Google Median Err (m) | Higher Success Rate |
 | :--- | :---: | :---: | :---: | ---: | ---: | :--- |
 | Changjiang_20 (01) | 18 | 74.79% (611/817) | 73.44% (600/817) | 19.46 | 19.05 | ESRI |
 | Changjiang_23 (02) | 18 | 65.64% (703/1071) | 66.20% (709/1071) | 15.30 | 15.22 | Google |
@@ -211,27 +263,55 @@ The table below includes every evaluated region (01-11) for both tile providers.
 
 ### Tile Provider Comparison
 
-| Provider | Experiments | Frames | Success | Success Rate | Mean Error (m) | Mean Median Error (m) | Mean Inliers | Mean Match Time (s) |
-| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| esri | 11 | 6772 | 5167 | 76.30% | 29.39 | 20.86 | 243.7 | 0.039 |
-| google | 11 | 6772 | 5355 | 79.08% | 30.22 | 20.90 | 268.0 | 0.041 |
+The table below reports **pooled per-frame metrics** for the two tile providers.
+
+| Provider | Exps. | Success | Success Rate | Mean Err (m) | Median Err (m) | P90 Err (m) | Mean Inliers | Match Time (s) | Cand. Maps |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| esri | 11 | 5167 | 76.30% | 24.88 | 20.01 | 41.47 | 275.0 | 0.046 | 55.5 |
+| google | 11 | 5355 | 79.08% | 26.13 | 20.00 | 42.34 | 298.8 | 0.048 | 63.8 |
 
 ### Summary
 
-<p align="center">
-  <img src="assets/results_summary_charts.png" alt="Summary Charts">
-</p>
+The publication-style figures below summarize the valid-region results. Region 07 is excluded from the plots because both providers fail completely there and the sequence is already discussed separately above.
 
-Region 07 is excluded from the charts because both providers are at 0% success there. During dataset preparation, satellite-image generation for Region 07 also produced errors; the most likely explanation is that the GT coordinates provided by the dataset are incorrect for that sequence.
+<table>
+  <tr>
+    <td valign="top" width="70%">
+      <strong>Success Rate by Region</strong><br><br>
+      <img src="assets/success_rate_by_region.png" alt="Success rate by region">
+    </td>
+    <td valign="center" width="30%">
+      Google reaches the higher success rate in 8 of the 10 plotted regions. The strongest gains appear in Regions 05 and 06, while ESRI keeps a slight edge in Regions 01 and 10.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top" width="70%">
+      <strong>Mean Error with Std by Region</strong><br><br>
+      <img src="assets/mean_std_error_by_region.png" alt="Mean error with standard deviation by region">
+    </td>
+    <td valign="center" width="30%">
+      This view emphasizes dispersion instead of only central tendency. Region 06 stands out with very large variance for both providers, indicating rare but severe outliers among otherwise successful matches.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top" width="70%">
+      <strong>Median Error by Region</strong><br><br>
+      <img src="assets/median_error_by_region.png" alt="Median error by region">
+    </td>
+    <td valign="center" width="30%">
+      Median error remains far more stable than mean error, mostly between 15 m and 25 m, with Region 04 as the main exception near 31 m. This suggests that provider choice affects recall more than typical post-match accuracy.
+    </td>
+  </tr>
+</table>
 
 ### Observations
 
 *   **Overall comparison:** Google has higher aggregate success rate (79.08% vs 76.30%), while median error is very close between providers.
 *   **Strong regions:** Regions 03, 04, and 11 remain near-perfect (>96% on both providers).
 *   **Challenging regions:** Region 07 is currently unresolved (0% for both), and Region 10 remains low-success on both providers.
-*   **Region 07 data quality:** The repeated preparation errors on Region 07 are likely dataset-side rather than matcher-side; the GT values shipped with that sequence appear to be wrong.
+*   **Region 07 status:** The current stored evaluation snapshot does not obtain any successful matches there for either provider (0/30 on both).
 *   **Provider-sensitive regions:** Regions 05 and 06 show large gains with Google in success rate.
-*   **Low-texture failure mode:** In sea, river, and very rural scenes, matching often fails when the system cannot extract enough reliable visual features.
+*   **Low-texture failure mode:** Sea, river, and very rural scenes remain plausible failure cases because the matcher may not recover enough reliable visual features there.
 
 ## Limitations and Future Work
 

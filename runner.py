@@ -3,7 +3,7 @@
 This script manages the end-to-end pipeline:
 1. "dataset-prepare": Prepare central dataset and maps (fetching satellite tiles, organizing central storage).
 2. "dataset-eval": Execution of the visual positioning engine.
-3. "eval-summary": Generate summary report.
+3. "eval-results": Generate summary report.
 """
 
 
@@ -147,7 +147,7 @@ class Runner:
             help="Step 2: Run primary visual positioning",
         )
         parser.add_argument(
-            "--eval-summary",
+            "--eval-results",
             nargs="*",
             metavar="ID",
             help="Step 3: Generate summary report and GIFs",
@@ -178,7 +178,7 @@ class Runner:
 
         prep_ids = self._parse_region_ids(args.dataset_prepare)
         eval_ids = self._parse_region_ids(args.dataset_eval)
-        summary_ids = self._parse_region_ids(args.eval_summary)
+        summary_ids = self._parse_region_ids(args.eval_results)
         if prep_ids or eval_ids:
             if not args.tile_provider:
                 print(
@@ -253,7 +253,7 @@ class Runner:
             [
                 args.dataset_prepare,
                 args.dataset_eval,
-                args.eval_summary is not None,
+                args.eval_results is not None,
             ]
         ):
             parser.print_help()
