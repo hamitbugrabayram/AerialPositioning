@@ -28,7 +28,7 @@ if ! declare -F conda >/dev/null 2>&1; then
   fi
 fi
 
-ENV_NAME="${CONDA_ENV_NAME:-satellite-loc}"
+ENV_NAME="${CONDA_ENV_NAME:-aerial-pos}"
 conda activate "$ENV_NAME"
 
 echo "=========================================="

@@ -24,10 +24,11 @@ This repository presents a vision-based positioning process for estimating the h
 Use Python 3.9 with dependencies from `requirements.txt`. For complete matcher support, clone with `--recursive` because the repository includes matcher submodules. The current default configuration in `config.yaml` uses the `minima` matcher, while the codebase also supports `lightglue`, `loftr`, and `gim`.
 
 ```bash
-git clone --recursive REPO_URL
+git clone https://github.com/hamitbugrabayram/AerialPositioning.git
 cd AerialPositioning
-python -m venv .venv
-source .venv/bin/activate
+git submodule update --init --recursive
+conda create -n aerial-pos python=3.9
+conda activate aerial-pos
 pip install -r requirements.txt
 ```
 
