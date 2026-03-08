@@ -111,7 +111,6 @@ class PositioningConfig:
             config = yaml.safe_load(f)
 
         positioning_params = config.get("positioning_params", {})
-
         return cls(
             matcher_type=config.get("matcher_type", "gim"),
             device=config.get("device", "cuda"),
