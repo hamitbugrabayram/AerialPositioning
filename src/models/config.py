@@ -59,7 +59,8 @@ class PositioningConfig:
     """Parsed positioning configuration.
 
     Attributes:
-        matcher_type: Type of matcher to use (lightglue, gim, loftr, minima).
+        matcher_type: Type of matcher to use
+            (lightglue, gim, loftr, minima, orb).
         device: Compute device (cuda, cpu).
         data_paths: Dictionary of data directory paths.
         preprocessing: Preprocessing configuration.

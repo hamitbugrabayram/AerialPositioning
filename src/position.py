@@ -1,4 +1,3 @@
-
 """Aerial Positioning via Satellite Imagery.
 
 This script provides a GNSS-free aerial positioning system using satellite imagery.
@@ -6,7 +5,7 @@ It estimates the geographic coordinates of an aerial vehicle by matching onboard
 camera images against satellite map tiles using deep feature matching algorithms.
 
 The system supports multiple feature matching backends including LightGlue,
-LoFTR, GIM, and MINIMA for robust cross-domain image matching.
+LoFTR, GIM, MINIMA, and ORB for robust cross-domain image matching.
 
 Example:
     Run the positioning system with a configuration file::
@@ -27,6 +26,7 @@ from src.core.evaluator import Evaluator
 from src.models import PositioningConfig
 
 from src.utils.logger import get_logger
+
 _logger = get_logger(__name__)
 
 

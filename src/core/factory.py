@@ -27,6 +27,7 @@ class PipelineFactory:
         "gim": ("src.matchers.gim", "GimPipeline"),
         "loftr": ("src.matchers.loftr", "LoFTRPipeline"),
         "minima": ("src.matchers.minima", "MinimaPipeline"),
+        "orb": ("src.matchers.orb", "OrbPipeline"),
     }
 
     @classmethod

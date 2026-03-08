@@ -9,6 +9,7 @@ Classes:
     LoFTRPipeline: LoFTR-based dense feature matching.
     GimPipeline: GIM (Generalized Image Matching) framework.
     MinimaPipeline: MINIMA cross-modal matching framework.
+    OrbPipeline: Classical ORB-based matcher.
 """
 
 from src.matchers.base import BaseMatcher, MatchResult
@@ -20,6 +21,7 @@ __all__ = [
     "LoFTRPipeline",
     "GimPipeline",
     "MinimaPipeline",
+    "OrbPipeline",
 ]
 
 
@@ -55,5 +57,9 @@ def __getattr__(name: str):
         from src.matchers.minima import MinimaPipeline
 
         return MinimaPipeline
+    elif name == "OrbPipeline":
+        from src.matchers.orb import OrbPipeline
+
+        return OrbPipeline
 
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
