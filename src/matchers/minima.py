@@ -4,7 +4,6 @@ This module implements the MINIMA matcher supporting multiple methods:
 xoftr, sp_lg, loftr for cross-modal and multi-modal image matching.
 """
 
-
 import os
 import sys
 import time
@@ -17,6 +16,7 @@ import numpy as np
 from .base import BaseMatcher
 
 from src.utils.logger import get_logger
+
 _logger = get_logger(__name__)
 
 _MINIMA_PATH = Path(__file__).resolve().parent.parent.parent / "matchers/MINIMA"
@@ -88,9 +88,7 @@ class MinimaPipeline(BaseMatcher):
                 np.float = np.float64
 
             sys.path = [
-                p
-                for p in sys.path
-                if Path(p or ".").resolve() != _PROJECT_SRC_PATH
+                p for p in sys.path if Path(p or ".").resolve() != _PROJECT_SRC_PATH
             ]
 
             saved_modules = {}
@@ -195,6 +193,8 @@ class MinimaPipeline(BaseMatcher):
                 mkpts1 = mkpts1.cpu().numpy()
             if hasattr(mconf, "cpu"):
                 mconf = mconf.cpu().numpy()
+
+            self._set_feature_counts(results, len(mkpts0), len(mkpts1), len(mkpts0))
 
             results["mkpts0"] = mkpts0
             results["mkpts1"] = mkpts1

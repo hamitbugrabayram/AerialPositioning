@@ -1,4 +1,3 @@
-
 """Positioning orchestration logic for aerial position estimation.
 
 This module contains the PositioningRunner class which coordinates the
@@ -19,6 +18,7 @@ from src.models.config import PositioningConfig, QueryResult
 from src.utils.statistics import ResultManager
 
 from src.utils.logger import get_logger
+
 _logger = get_logger(__name__)
 
 
@@ -68,9 +68,11 @@ class PositioningRunner:
         """
         if self._helpers_loaded:
             return True
-        from src.utils.helpers import (calculate_location_and_error,
-                                       calculate_predicted_gps,
-                                       haversine_distance)
+        from src.utils.helpers import (
+            calculate_location_and_error,
+            calculate_predicted_gps,
+            haversine_distance,
+        )
 
         if self.engine:
             self.engine.inject_helpers(
@@ -158,6 +160,8 @@ class PositioningRunner:
         self.pipeline = PipelineFactory.create(self.config)
         if self.pipeline is None:
             raise RuntimeError("PipelineFactory returned None.")
+        pipeline_name = getattr(self.pipeline, "name", self.config.matcher_type)
+        _logger.info(f"Matcher pipeline: {pipeline_name}")
 
     def _load_metadata(self) -> None:
         """Loads and cleans query and map metadata from CSV files.
@@ -280,10 +284,19 @@ class PositioningRunner:
         res_dir = self.output_dir / Path(fname).stem
         rel_maps = self._filter_relevant_maps(row, self.map_df)
         res.candidate_maps = int(len(rel_maps))
+        best_match_observation = (-1, -1)
         for _, m_row in rel_maps.iterrows():
             res.evaluated_maps += 1
             m_res = self.engine.match_query_to_map(
                 q_for_match, q_shape, row, m_row, res_dir, min_inliers, save_viz
+            )
+            res.matcher_time_frame_s += float(
+                getattr(self.engine, "last_matcher_time_s", 0.0)
+            )
+            best_match_observation = self._update_match_observation(
+                res,
+                getattr(self.engine, "last_matcher_summary", {}),
+                best_match_observation,
             )
             if m_res and self._is_better(m_res, res):
                 self._update(res, m_res)
@@ -418,12 +431,35 @@ class PositioningRunner:
         """
         res.best_map_filename, res.inliers = m_res["map_filename"], m_res["inliers"]
         res.outliers, res.time = m_res["outliers"], m_res["time"]
+        res.query_features = int(m_res.get("query_features", res.query_features))
+        res.map_features = int(m_res.get("map_features", res.map_features))
+        res.matched_features = int(m_res.get("matched_features", res.matched_features))
         res.predicted_latitude, res.predicted_longitude = (
             m_res["pred_lat"],
             m_res["pred_lon"],
         )
         res.error_meters, res.success = m_res["error_meters"], True
         res.failure_reason = None
+
+    @staticmethod
+    def _update_match_observation(res, summary, best_score):
+        """Stores the strongest per-frame matcher observation seen so far."""
+        if not isinstance(summary, dict):
+            return best_score
+
+        score = (
+            int(summary.get("inliers", 0)),
+            int(summary.get("matched_features", 0)),
+        )
+        if score <= best_score:
+            return best_score
+
+        res.query_features = int(summary.get("query_features", res.query_features))
+        res.map_features = int(summary.get("map_features", res.map_features))
+        res.matched_features = int(
+            summary.get("matched_features", res.matched_features)
+        )
+        return score
 
     def _save_results(self, results: List[QueryResult]) -> None:
         """Delegates result saving to the ResultManager.

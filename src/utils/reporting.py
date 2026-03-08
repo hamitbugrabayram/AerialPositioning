@@ -184,9 +184,13 @@ class ReportGenerator:
 
         errors = self._numeric_series(success_df, "Error (m)")
         inliers = self._numeric_series(success_df, "Inliers")
-        times = self._numeric_series(df, "Best Match Time (s)")
+        best_match_times = self._numeric_series(df, "Best Match Time (s)")
+        matcher_frame_times = self._numeric_series(df, "Matcher Time / Frame (s)")
         candidates = self._numeric_series(df, "Candidate Maps")
         evaluated = self._numeric_series(df, "Evaluated Maps")
+        query_features = self._numeric_series(df, "Query Features")
+        map_features = self._numeric_series(df, "Map Features")
+        matched_features = self._numeric_series(df, "Matched Features")
 
         radius_counts: Dict[str, int] = {}
         if "Search Radius (m)" in df.columns:
@@ -263,14 +267,28 @@ class ReportGenerator:
             "MeanInliers": safe_stat(float(cast(Any, inliers.mean())))
             if not inliers.empty
             else float("nan"),
-            "MeanMatchTimeS": safe_stat(float(cast(Any, times.mean())))
-            if not times.empty
+            "MeanBestMatchTimeS": safe_stat(float(cast(Any, best_match_times.mean())))
+            if not best_match_times.empty
+            else float("nan"),
+            "MeanMatcherFrameTimeS": safe_stat(
+                float(cast(Any, matcher_frame_times.mean()))
+            )
+            if not matcher_frame_times.empty
             else float("nan"),
             "MeanCandidateMaps": safe_stat(float(cast(Any, candidates.mean())))
             if not candidates.empty
             else float("nan"),
             "MeanEvaluatedMaps": safe_stat(float(cast(Any, evaluated.mean())))
             if not evaluated.empty
+            else float("nan"),
+            "MeanQueryFeatures": safe_stat(float(cast(Any, query_features.mean())))
+            if not query_features.empty
+            else float("nan"),
+            "MeanMapFeatures": safe_stat(float(cast(Any, map_features.mean())))
+            if not map_features.empty
+            else float("nan"),
+            "MeanMatchedFeatures": safe_stat(float(cast(Any, matched_features.mean())))
+            if not matched_features.empty
             else float("nan"),
             "RadiusUsage": radius_counts,
             "TopFailureReasons": top_failures,
@@ -333,11 +351,16 @@ class ReportGenerator:
                 f"- Total Frames: {total_frames}",
                 f"- Successful Frames: {total_success}",
                 f"- Overall Success Rate: {overall_rate:.2f}%",
+                f"- Mean Matcher Time / Frame (s): {self._fmt(summary_df['MeanMatcherFrameTimeS'].mean(), 3)}",
+                f"- Mean Best Match Time (s): {self._fmt(summary_df['MeanBestMatchTimeS'].mean(), 3)}",
+                f"- Mean Query Features / Frame: {self._fmt(summary_df['MeanQueryFeatures'].mean(), 1)}",
+                f"- Mean Map Features / Frame: {self._fmt(summary_df['MeanMapFeatures'].mean(), 1)}",
+                f"- Mean Matched Features / Frame: {self._fmt(summary_df['MeanMatchedFeatures'].mean(), 1)}",
                 "",
                 "## Experiment Table",
                 "",
-                "| Region | Provider | Zoom | Matcher | Frames | Success | Rate | Mean Err (m) | Median Err (m) | Std Err (m) | P90 Err (m) | Mean Inliers | Mean Time (s) |",
-                "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
+                "| Region | Provider | Zoom | Matcher | Frames | Success | Rate | Mean Err (m) | Mean Inliers | Matcher/Frame (s) | Best Match (s) | Query Feat | Map Feat | Matched Feat |",
+                "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
             ]
         )
 
@@ -347,9 +370,10 @@ class ReportGenerator:
                 f"{row.get('Zoom', 'N/A')} | {row.get('Matcher', 'N/A')} | "
                 f"{row.get('TotalFrames', 0)} | {row.get('SuccessfulFrames', 0)} | "
                 f"{self._fmt(row.get('SuccessRatePct'), 2, '%')} | "
-                f"{self._fmt(row.get('MeanErrorM'), 2)} | {self._fmt(row.get('MedianErrorM'), 2)} | "
-                f"{self._fmt(row.get('StdErrorM'), 2)} | {self._fmt(row.get('P90ErrorM'), 2)} | "
-                f"{self._fmt(row.get('MeanInliers'), 1)} | {self._fmt(row.get('MeanMatchTimeS'), 3)} |"
+                f"{self._fmt(row.get('MeanErrorM'), 2)} | {self._fmt(row.get('MeanInliers'), 1)} | "
+                f"{self._fmt(row.get('MeanMatcherFrameTimeS'), 3)} | {self._fmt(row.get('MeanBestMatchTimeS'), 3)} | "
+                f"{self._fmt(row.get('MeanQueryFeatures'), 1)} | {self._fmt(row.get('MeanMapFeatures'), 1)} | "
+                f"{self._fmt(row.get('MeanMatchedFeatures'), 1)} |"
             )
 
         lines.extend(["", "## Aggregate By Provider", ""])
@@ -362,7 +386,11 @@ class ReportGenerator:
                 MeanErrorM=("MeanErrorM", "mean"),
                 StdErrorM=("StdErrorM", "mean"),
                 MeanInliers=("MeanInliers", "mean"),
-                MeanMatchTimeS=("MeanMatchTimeS", "mean"),
+                MeanMatcherFrameTimeS=("MeanMatcherFrameTimeS", "mean"),
+                MeanBestMatchTimeS=("MeanBestMatchTimeS", "mean"),
+                MeanQueryFeatures=("MeanQueryFeatures", "mean"),
+                MeanMapFeatures=("MeanMapFeatures", "mean"),
+                MeanMatchedFeatures=("MeanMatchedFeatures", "mean"),
             )
             .reset_index()
         )
@@ -372,8 +400,8 @@ class ReportGenerator:
 
         lines.extend(
             [
-                "| Provider | Experiments | Frames | Success | Rate | Mean Err (m) | Mean Std Err (m) | Mean Inliers | Mean Time (s) |",
-                "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
+                "| Provider | Experiments | Frames | Success | Rate | Mean Err (m) | Mean Inliers | Matcher/Frame (s) | Best Match (s) | Query Feat | Map Feat | Matched Feat |",
+                "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
             ]
         )
         for row in provider_agg.to_dict(orient="records"):
@@ -382,9 +410,12 @@ class ReportGenerator:
                 f"{int(row.get('TotalFrames', 0))} | {int(row.get('SuccessfulFrames', 0))} | "
                 f"{self._fmt(float(row.get('SuccessRatePct', 0.0)), 2, '%')} | "
                 f"{self._fmt(float(row.get('MeanErrorM', float('nan'))), 2)} | "
-                f"{self._fmt(float(row.get('StdErrorM', float('nan'))), 2)} | "
                 f"{self._fmt(float(row.get('MeanInliers', float('nan'))), 1)} | "
-                f"{self._fmt(float(row.get('MeanMatchTimeS', float('nan'))), 3)} |"
+                f"{self._fmt(float(row.get('MeanMatcherFrameTimeS', float('nan'))), 3)} | "
+                f"{self._fmt(float(row.get('MeanBestMatchTimeS', float('nan'))), 3)} | "
+                f"{self._fmt(float(row.get('MeanQueryFeatures', float('nan'))), 1)} | "
+                f"{self._fmt(float(row.get('MeanMapFeatures', float('nan'))), 1)} | "
+                f"{self._fmt(float(row.get('MeanMatchedFeatures', float('nan'))), 1)} |"
             )
 
         lines.extend(["", "## Per Experiment Details", ""])
@@ -402,7 +433,11 @@ class ReportGenerator:
                     f"- Success: {row.get('SuccessfulFrames', 0)} / {row.get('TotalFrames', 0)} ({self._fmt(row.get('SuccessRatePct'), 2, '%')})",
                     f"- Error Mean/Median/Std/P90/Max (m): {self._fmt(row.get('MeanErrorM'), 2)} / {self._fmt(row.get('MedianErrorM'), 2)} / {self._fmt(row.get('StdErrorM'), 2)} / {self._fmt(row.get('P90ErrorM'), 2)} / {self._fmt(row.get('MaxErrorM'), 2)}",
                     f"- Mean Inliers: {self._fmt(row.get('MeanInliers'), 1)}",
-                    f"- Mean Match Time (s): {self._fmt(row.get('MeanMatchTimeS'), 3)}",
+                    f"- Mean Matcher Time / Frame (s): {self._fmt(row.get('MeanMatcherFrameTimeS'), 3)}",
+                    f"- Mean Best Match Time (s): {self._fmt(row.get('MeanBestMatchTimeS'), 3)}",
+                    f"- Mean Query Features / Frame: {self._fmt(row.get('MeanQueryFeatures'), 1)}",
+                    f"- Mean Map Features / Frame: {self._fmt(row.get('MeanMapFeatures'), 1)}",
+                    f"- Mean Matched Features / Frame: {self._fmt(row.get('MeanMatchedFeatures'), 1)}",
                     f"- Mean Candidate Maps: {self._fmt(row.get('MeanCandidateMaps'), 1)}",
                     f"- Mean Evaluated Maps: {self._fmt(row.get('MeanEvaluatedMaps'), 1)}",
                     f"- Results CSV: `{row.get('ResultsCSV', 'N/A')}`",
@@ -497,7 +532,11 @@ class ReportGenerator:
             "StdErrorM",
             "P90ErrorM",
             "MeanInliers",
-            "MeanMatchTimeS",
+            "MeanMatcherFrameTimeS",
+            "MeanBestMatchTimeS",
+            "MeanQueryFeatures",
+            "MeanMapFeatures",
+            "MeanMatchedFeatures",
         ]
         _logger.info("\n" + summary_df[display_cols].to_string(index=False))
         _logger.info(f"\nMarkdown report saved: {summary_path}")

@@ -4,7 +4,6 @@ This module implements the LightGlue matcher with SuperPoint or DISK
 feature extraction for image matching and positioning.
 """
 
-
 import sys
 import time
 from pathlib import Path
@@ -15,6 +14,7 @@ import torch
 from .base import BaseMatcher
 
 from src.utils.logger import get_logger
+
 _logger = get_logger(__name__)
 
 _LIGHTGLUE_PATH = Path(__file__).parent.parent.parent / "matchers/LightGlue"
@@ -130,6 +130,7 @@ class LightGluePipeline(BaseMatcher):
 
             kpts0, kpts1 = feats0["keypoints"], feats1["keypoints"]
             matches = matches01["matches"]
+            self._set_feature_counts(results, len(kpts0), len(kpts1), len(matches))
 
             mkpts0 = kpts0[matches[..., 0]].cpu().numpy()
             mkpts1 = kpts1[matches[..., 1]].cpu().numpy()

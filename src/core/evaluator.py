@@ -301,12 +301,21 @@ class Evaluator(PositioningRunner):
             self.composite_renderer.render_frame(fd, results)
 
         success_count = sum(1 for r in results if r.success)
+        avg_matcher_time_frame_s = sum(r.matcher_time_frame_s for r in results) / max(
+            len(results), 1
+        )
+        feature_text = (
+            f"Features Q/M/Matched: {result.query_features}/"
+            f"{result.map_features}/{result.matched_features}"
+        )
         status = "OK" if result.success else "SKIP"
         _logger.info(
             f"Frame: {idx_int + 1}/{total_frames} | "
             f"{status} | Radius: {current_radius:.0f}m | "
             f"Skips: {consecutive_skips} | "
-            f"Success: {success_count}/{idx_int + 1}"
+            f"Success: {success_count}/{idx_int + 1} | "
+            f"Avg Matcher/Frame: {avg_matcher_time_frame_s:.3f}s | "
+            f"{feature_text}"
         )
 
     def _handle_exception(
@@ -631,6 +640,7 @@ class Evaluator(PositioningRunner):
                 pass
         res.candidate_maps = int(len(rel_maps))
         res_dir = self.output_dir / Path(query_filename).stem
+        best_match_observation = (-1, -1)
 
         for _, m_row in rel_maps.iterrows():
             res.evaluated_maps += 1
@@ -643,6 +653,14 @@ class Evaluator(PositioningRunner):
                     res_dir,
                     min_inliers,
                     save_viz,
+                )
+                res.matcher_time_frame_s += float(
+                    getattr(self.engine, "last_matcher_time_s", 0.0)
+                )
+                best_match_observation = self._update_match_observation(
+                    res,
+                    getattr(self.engine, "last_matcher_summary", {}),
+                    best_match_observation,
                 )
                 if m_res and self._is_better(m_res, res):
                     self._update(res, m_res)

@@ -91,6 +91,9 @@ def main() -> int:
 
     try:
         config = PositioningConfig.from_yaml(str(config_path))
+        _logger.info(
+            f"Configured matcher: {config.matcher_type} | Config: {config_path}"
+        )
 
         if args.eval:
             runner = Evaluator(config)

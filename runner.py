@@ -110,15 +110,20 @@ class Runner:
             raise ValueError("Results subfolder must stay inside results/.") from exc
         return candidate
 
-    def _matcher_name_from_config(self, config_path: Path) -> str:
-        """Extracts a filesystem-safe matcher name from a YAML config."""
+    def _read_matcher_type_from_config(self, config_path: Path) -> str:
+        """Reads the matcher type declared in a YAML config."""
         try:
             with open(config_path, "r", encoding="utf-8") as file:
                 cfg = yaml.safe_load(file) or {}
         except Exception as exc:
             raise RuntimeError(f"Failed to read config '{config_path}': {exc}") from exc
 
-        matcher_name = str(cfg.get("matcher_type", "unknown")).strip().upper()
+        matcher_name = str(cfg.get("matcher_type", "unknown")).strip()
+        return matcher_name or "unknown"
+
+    def _matcher_name_from_config(self, config_path: Path) -> str:
+        """Extracts a filesystem-safe matcher name from a YAML config."""
+        matcher_name = self._read_matcher_type_from_config(config_path).upper()
         if not matcher_name:
             matcher_name = "UNKNOWN"
         return "".join(
@@ -192,7 +197,8 @@ class Runner:
                 f"Failed to generate configuration for {exp_folder_name}: {e}"
             ) from e
 
-        _logger.info(f"Running: {exp_folder_name}")
+        matcher_type = self._read_matcher_type_from_config(config_path)
+        _logger.info(f"Running: {exp_folder_name} | Matcher: {matcher_type}")
 
         cmd = [
             sys.executable,
@@ -292,9 +298,13 @@ class Runner:
 
         if eval_ids:
             try:
+                matcher_type = self._read_matcher_type_from_config(
+                    self.base_config_path
+                )
                 eval_results_batch_dir = self._create_results_batch_dir(
                     self.base_config_path
                 )
+                _logger.info(f"Evaluation matcher: {matcher_type}")
                 _logger.info(f"Evaluation batch directory: {eval_results_batch_dir}")
             except Exception as e:
                 _logger.info(f"ERROR: Failed to create results directory: {e}")

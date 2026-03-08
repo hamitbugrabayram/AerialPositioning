@@ -1,4 +1,3 @@
-
 """Core positioning engine for image matching and coordinate estimation.
 
 This module provides the PositioningEngine class which handles image
@@ -17,6 +16,7 @@ from src.models.config import PositioningConfig
 from src.utils.tile_system import TileSystem
 
 from src.utils.logger import get_logger
+
 _logger = get_logger(__name__)
 
 
@@ -43,6 +43,55 @@ class PositioningEngine:
         self._pair_log_cache: set[str] = set()
         self._pair_log_seq_by_query: Dict[str, int] = {}
         self._query_variants_cache: Dict[str, list[Tuple[Path, Tuple[int, ...]]]] = {}
+        self.last_matcher_time_s = 0.0
+        self.last_matcher_calls = 0
+        self.last_matcher_summary: Dict[str, int] = {
+            "query_features": 0,
+            "map_features": 0,
+            "matched_features": 0,
+            "inliers": 0,
+        }
+
+    @staticmethod
+    def _summarize_match_results(
+        match_results: Optional[Dict[str, Any]],
+    ) -> Dict[str, int]:
+        """Extracts feature/match counts from a matcher result dict."""
+
+        def safe_len(value: Any) -> int:
+            if value is None:
+                return 0
+            try:
+                return int(len(value))
+            except Exception:
+                return 0
+
+        if not match_results:
+            return {
+                "query_features": 0,
+                "map_features": 0,
+                "matched_features": 0,
+                "inliers": 0,
+            }
+
+        mkpts0 = match_results.get("mkpts0")
+        mkpts1 = match_results.get("mkpts1")
+        inlier_mask = match_results.get("inliers")
+        query_features = int(match_results.get("query_features", safe_len(mkpts0)))
+        map_features = int(match_results.get("map_features", safe_len(mkpts1)))
+        matched_features = int(
+            match_results.get(
+                "matched_features",
+                min(safe_len(mkpts0), safe_len(mkpts1)),
+            )
+        )
+        inliers = int(np.sum(inlier_mask)) if inlier_mask is not None else 0
+        return {
+            "query_features": max(0, query_features),
+            "map_features": max(0, map_features),
+            "matched_features": max(0, matched_features),
+            "inliers": max(0, inliers),
+        }
 
     def _pair_logging_config(self) -> Dict[str, Any]:
         """Returns normalised pair-logging configuration.
@@ -165,9 +214,7 @@ class PositioningEngine:
                     inlier_mask = np.zeros(len(mkpts0), dtype=bool)
                 homography = match_results.get("homography")
 
-                err_str = (
-                    f"{error_meters:.1f}m" if error_meters is not None else "n/a"
-                )
+                err_str = f"{error_meters:.1f}m" if error_meters is not None else "n/a"
                 text_lines = [
                     f"{status}  |  inliers={inliers}  |  error={err_str}",
                     f"query={query_path.name}  |  map={map_path.name}",
@@ -190,7 +237,7 @@ class PositioningEngine:
                 self._pair_log_seq_by_query[query_path.name] = seq
                 return
             except Exception:
-                pass 
+                pass
 
         query_img = cv2.imread(str(query_path))
         map_img = cv2.imread(str(map_path))
@@ -217,18 +264,35 @@ class PositioningEngine:
         canvas[header_h:, q_view.shape[1] + gap :] = m_view
 
         cv2.putText(
-            canvas, f"PAIR LOG | status={status}",
-            (10, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.72, (20, 20, 20), 2, cv2.LINE_AA,
+            canvas,
+            f"PAIR LOG | status={status}",
+            (10, 26),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.72,
+            (20, 20, 20),
+            2,
+            cv2.LINE_AA,
         )
         cv2.putText(
-            canvas, f"query={query_path.name} | map={map_path.name}",
-            (10, 54), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (20, 20, 20), 2, cv2.LINE_AA,
+            canvas,
+            f"query={query_path.name} | map={map_path.name}",
+            (10, 54),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            (20, 20, 20),
+            2,
+            cv2.LINE_AA,
         )
         err_str = error_meters if error_meters is not None else "na"
         cv2.putText(
             canvas,
             f"matcher_success={matcher_success} | inliers={inliers} | error_m={err_str}",
-            (10, 78), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (20, 20, 20), 2, cv2.LINE_AA,
+            (10, 78),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            (20, 20, 20),
+            2,
+            cv2.LINE_AA,
         )
 
         cv2.imwrite(str(out_path), canvas)
@@ -373,7 +437,9 @@ class PositioningEngine:
 
         map_dir = Path(self.config.data_paths["map_dir"])
         output_dir = Path(self.config.data_paths["output_dir"])
-        context_dir_name = "context_maps" if self._save_map_context_maps() else ".tmp_context_maps"
+        context_dir_name = (
+            "context_maps" if self._save_map_context_maps() else ".tmp_context_maps"
+        )
         context_dir = output_dir / context_dir_name
         context_dir.mkdir(parents=True, exist_ok=True)
 
@@ -381,9 +447,7 @@ class PositioningEngine:
         tile_y = int(cast(Any, map_row["TileY"]))
         level = int(cast(Any, map_row["Level"]))
         provider = str(
-            map_row.get(
-                "Provider", self.config.tile_provider.get("name", "esri")
-            )
+            map_row.get("Provider", self.config.tile_provider.get("name", "esri"))
         )
 
         half = grid_size // 2
@@ -413,9 +477,7 @@ class PositioningEngine:
         out_path = context_dir / out_name
         cv2.imwrite(str(out_path), panel)
 
-        nw_px_x, nw_px_y = TileSystem.tile_xy_to_pixel_xy(
-            tile_x - half, tile_y - half
-        )
+        nw_px_x, nw_px_y = TileSystem.tile_xy_to_pixel_xy(tile_x - half, tile_y - half)
         se_px_x = nw_px_x + panel_size
         se_px_y = nw_px_y + panel_size
         nw_lat, nw_lon = TileSystem.pixel_xy_to_latlong(nw_px_x, nw_px_y, level)
@@ -551,7 +613,9 @@ class PositioningEngine:
                 if image is None or image.size == 0:
                     continue
 
-                name = f"{Path(query_path.name).stem}_{tag}{Path(query_path.name).suffix}"
+                name = (
+                    f"{Path(query_path.name).stem}_{tag}{Path(query_path.name).suffix}"
+                )
                 processed_path = temp_dir / name
                 cv2.imwrite(str(processed_path), image)
                 prepared.append((processed_path, image.shape))
@@ -600,6 +664,9 @@ class PositioningEngine:
 
         """
         map_filename = str(map_row["Filename"])
+        self.last_matcher_time_s = 0.0
+        self.last_matcher_calls = 0
+        self.last_matcher_summary = self._summarize_match_results(None)
         if self.pipeline is None:
             return None
 
@@ -619,9 +686,13 @@ class PositioningEngine:
         best_variant_shape = query_shape
         best_match_results: Optional[Dict[str, Any]] = None
         best_num_inliers = -1
+        matcher_time_total = 0.0
+        matcher_calls = 0
 
         for v_path, v_shape in variants:
             current_results = self.pipeline.match(v_path, map_match_path)
+            matcher_time_total += float(current_results.get("time", 0.0))
+            matcher_calls += 1
             current_mask = current_results.get("inliers")
             current_inliers = (
                 int(np.sum(current_mask)) if current_mask is not None else 0
@@ -631,6 +702,10 @@ class PositioningEngine:
                 best_match_results = current_results
                 best_variant_path = v_path
                 best_variant_shape = v_shape
+
+        self.last_matcher_time_s = matcher_time_total
+        self.last_matcher_calls = matcher_calls
+        self.last_matcher_summary = self._summarize_match_results(best_match_results)
 
         if best_match_results is None:
             return None
@@ -712,6 +787,9 @@ class PositioningEngine:
             "pred_lon": pos_res["pred_lon"],
             "error_meters": pos_res["error_meters"],
             "homography": match_results.get("homography"),
+            "query_features": self.last_matcher_summary["query_features"],
+            "map_features": self.last_matcher_summary["map_features"],
+            "matched_features": self.last_matcher_summary["matched_features"],
             "effective_map_metadata": effective_map_row,
             "query_shape": best_variant_shape,
             "map_shape": map_img.shape,

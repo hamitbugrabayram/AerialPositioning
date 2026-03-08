@@ -4,7 +4,6 @@ This module provides classes for managing positioning results, saving them to CS
 and computing performance statistics.
 """
 
-
 from pathlib import Path
 from typing import List
 
@@ -14,6 +13,7 @@ import pandas as pd
 from src.models.config import QueryResult
 
 from src.utils.logger import get_logger
+
 _logger = get_logger(__name__)
 
 
@@ -85,6 +85,10 @@ class ResultManager:
                     "Inliers": r.inliers,
                     "Outliers": r.outliers,
                     "Best Match Time (s)": r.time,
+                    "Matcher Time / Frame (s)": r.matcher_time_frame_s,
+                    "Query Features": r.query_features,
+                    "Map Features": r.map_features,
+                    "Matched Features": r.matched_features,
                     "GT Latitude": r.gt_latitude,
                     "GT Longitude": r.gt_longitude,
                     "Pred Latitude": r.predicted_latitude,
@@ -123,6 +127,19 @@ class ResultManager:
         _logger.info(f"Processed: {num_processed}")
         _logger.info(f"Successful: {num_successful}")
         _logger.info(f"Success Rate: {rate:.2f}%")
+        if num_processed > 0 and "Matcher Time / Frame (s)" in df.columns:
+            _logger.info(
+                "Avg Matcher Time / Frame: "
+                f"{df['Matcher Time / Frame (s)'].mean():.3f} s"
+            )
+        if num_processed > 0:
+            _logger.info(
+                f"Avg Query Features / Frame: {df['Query Features'].mean():.1f}"
+            )
+            _logger.info(f"Avg Map Features / Frame: {df['Map Features'].mean():.1f}")
+            _logger.info(
+                f"Avg Matched Features / Frame: {df['Matched Features'].mean():.1f}"
+            )
 
         if num_successful > 0:
             errs = successful["Error (m)"].astype(float)
@@ -131,7 +148,9 @@ class ResultManager:
             _logger.info(f"P90 Error: {np.percentile(errs, 90):.2f} m")
             _logger.info(f"Max Error: {errs.max():.2f} m")
             _logger.info(f"Avg Inliers: {successful['Inliers'].mean():.1f}")
-            _logger.info(f"Avg Time: {df['Best Match Time (s)'].mean():.3f} s")
+            _logger.info(
+                f"Avg Best Match Time: {df['Best Match Time (s)'].mean():.3f} s"
+            )
         if "Search Radius (m)" in df.columns:
             radius_counts = (
                 df["Search Radius (m)"]

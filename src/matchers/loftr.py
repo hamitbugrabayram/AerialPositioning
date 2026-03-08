@@ -4,7 +4,6 @@ This module implements the LoFTR (Detector-Free Local Feature Matching)
 matcher for dense feature matching between image pairs.
 """
 
-
 import sys
 import time
 from copy import deepcopy
@@ -18,6 +17,7 @@ import torch
 from .base import BaseMatcher
 
 from src.utils.logger import get_logger
+
 _logger = get_logger(__name__)
 
 _LOFTR_PATH = Path(__file__).resolve().parent.parent.parent / "matchers/LoFTR"
@@ -215,6 +215,12 @@ class LoFTRPipeline(BaseMatcher):
             mkpts0_loftr = batch["mkpts0_f"].cpu().numpy()
             mkpts1_loftr = batch["mkpts1_f"].cpu().numpy()
             mconf = batch["mconf"].cpu().numpy()
+            self._set_feature_counts(
+                results,
+                len(mkpts0_loftr),
+                len(mkpts1_loftr),
+                len(mkpts0_loftr),
+            )
 
             mkpts0 = mkpts0_loftr * scale0
             mkpts1 = mkpts1_loftr * scale1

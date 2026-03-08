@@ -5,7 +5,6 @@ for all matching engines in the system. Contains shared functionality
 to eliminate code duplication across matcher implementations.
 """
 
-
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +15,7 @@ import numpy as np
 import torch
 
 from src.utils.logger import get_logger
+
 _logger = get_logger(__name__)
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -76,7 +76,9 @@ class BaseMatcher(ABC):
         self.config = config
         requested_device = str(config.get("device", "cuda")).lower()
         if requested_device.startswith("cuda") and not torch.cuda.is_available():
-            _logger.info("WARNING: CUDA requested but not available. Falling back to CPU.")
+            _logger.info(
+                "WARNING: CUDA requested but not available. Falling back to CPU."
+            )
             self.device = "cpu"
         else:
             self.device = requested_device
@@ -133,7 +135,22 @@ class BaseMatcher(ABC):
             "time": 0.0,
             "success": False,
             "mconf": np.array([]),
+            "query_features": 0,
+            "map_features": 0,
+            "matched_features": 0,
         }
+
+    def _set_feature_counts(
+        self,
+        results: Dict[str, Any],
+        query_features: int,
+        map_features: int,
+        matched_features: int,
+    ) -> None:
+        """Stores normalized feature and match counts in the result dict."""
+        results["query_features"] = max(0, int(query_features))
+        results["map_features"] = max(0, int(map_features))
+        results["matched_features"] = max(0, int(matched_features))
 
     def _update_result_with_homography(
         self,

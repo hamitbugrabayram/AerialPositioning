@@ -20,6 +20,10 @@ class QueryResult:
         inliers: Number of RANSAC inliers for best match.
         outliers: Number of RANSAC outliers for best match.
         time: Matching time in seconds.
+        matcher_time_frame_s: Total matcher runtime accumulated for the frame.
+        query_features: Number of query-side features/keypoints considered.
+        map_features: Number of map-side features/keypoints considered.
+        matched_features: Number of tentative matched correspondences.
         gt_latitude: Ground truth latitude.
         gt_longitude: Ground truth longitude.
         predicted_latitude: Predicted latitude from positioning.
@@ -40,6 +44,10 @@ class QueryResult:
     inliers: int = -1
     outliers: int = -1
     time: float = 0.0
+    matcher_time_frame_s: float = 0.0
+    query_features: int = 0
+    map_features: int = 0
+    matched_features: int = 0
     gt_latitude: Optional[float] = None
     gt_longitude: Optional[float] = None
     predicted_latitude: Optional[float] = None
