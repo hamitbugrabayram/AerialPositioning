@@ -144,12 +144,12 @@ class PositioningConfig:
                     "save_context_maps": False,
                 },
                 "adaptive_search": {
-                    "strategy": "ins_simulation",
+                    "strategy": "synthetic_ins_drift",
                     "initial_radius_m": 1000.0,
                     "max_radius_m": 2000.0,
                     "skip_penalty_m": 200.0,
-                    "ins_noise_sigma_m": 30.0,
-                    "ins_noise_max_m": 100.0,
+                    "synthetic_ins_noise_sigma_m": 30.0,
+                    "synthetic_ins_noise_max_m": 100.0,
                 },
             },
             tile_provider=config.get(

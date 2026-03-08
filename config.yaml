@@ -59,12 +59,12 @@ positioning_params:
     save_matched: false
     max_unique_pairs: 1
   adaptive_search:
-    strategy: ins_simulation   # ins_simulation | adaptive_radius
+    strategy: synthetic_ins_drift   # synthetic_ins_drift | adaptive_radius
     initial_radius_m: 500.0
     max_radius_m: 1000.0
     skip_penalty_m: 100.0
-    ins_noise_sigma_m: 30.0   # per-step INS drift std dev (metres)
-    ins_noise_max_m: 150.0    # per-step INS drift hard cap (metres)
+    synthetic_ins_noise_sigma_m: 30.0   # synthetic INS drift scale parameter (metres)
+    synthetic_ins_noise_max_m: 150.0    # synthetic INS drift hard cap (metres)
 
 tile_provider:
   name: esri
