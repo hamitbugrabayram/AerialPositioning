@@ -130,7 +130,7 @@ class LightGluePipeline(BaseMatcher):
 
             kpts0, kpts1 = feats0["keypoints"], feats1["keypoints"]
             matches = matches01["matches"]
-            self._set_feature_counts(results, len(kpts0), len(kpts1), len(matches))
+            self._set_feature_counts(results, len(matches))
 
             mkpts0 = kpts0[matches[..., 0]].cpu().numpy()
             mkpts1 = kpts1[matches[..., 1]].cpu().numpy()

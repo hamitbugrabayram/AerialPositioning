@@ -135,21 +135,15 @@ class BaseMatcher(ABC):
             "time": 0.0,
             "success": False,
             "mconf": np.array([]),
-            "query_features": 0,
-            "map_features": 0,
             "matched_features": 0,
         }
 
     def _set_feature_counts(
         self,
         results: Dict[str, Any],
-        query_features: int,
-        map_features: int,
         matched_features: int,
     ) -> None:
-        """Stores normalized feature and match counts in the result dict."""
-        results["query_features"] = max(0, int(query_features))
-        results["map_features"] = max(0, int(map_features))
+        """Stores normalized match counts in the result dict."""
         results["matched_features"] = max(0, int(matched_features))
 
     def _update_result_with_homography(

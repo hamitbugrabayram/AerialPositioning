@@ -158,12 +158,7 @@ class OrbPipeline(BaseMatcher):
 
             knn_matches = self.matcher.knnMatch(descriptors0, descriptors1, k=2)
             filtered_matches = self._filter_matches(knn_matches)
-            self._set_feature_counts(
-                results,
-                len(keypoints0),
-                len(keypoints1),
-                len(filtered_matches),
-            )
+            self._set_feature_counts(results, len(filtered_matches))
             if len(filtered_matches) < self.min_descriptor_matches:
                 return results
 

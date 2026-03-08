@@ -213,12 +213,7 @@ class LoFTRPipeline(BaseMatcher):
             mkpts0_loftr = batch["mkpts0_f"].cpu().numpy()
             mkpts1_loftr = batch["mkpts1_f"].cpu().numpy()
             mconf = batch["mconf"].cpu().numpy()
-            self._set_feature_counts(
-                results,
-                len(mkpts0_loftr),
-                len(mkpts1_loftr),
-                len(mkpts0_loftr),
-            )
+            self._set_feature_counts(results, len(mkpts0_loftr))
 
             mkpts0 = mkpts0_loftr * scale0
             mkpts1 = mkpts1_loftr * scale1

@@ -283,12 +283,7 @@ class GimPipeline(BaseMatcher):
             mkpts0 = kpts0_np * scale0
             mkpts1 = kpts1_np * scale1
 
-            self._set_feature_counts(
-                results,
-                len(kpts0_np),
-                len(kpts1_np),
-                len(kpts0_np),
-            )
+            self._set_feature_counts(results, len(kpts0_np))
 
             results["mkpts0"] = mkpts0
             results["mkpts1"] = mkpts1

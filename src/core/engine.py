@@ -43,11 +43,7 @@ class PositioningEngine:
         self._pair_log_cache: set[str] = set()
         self._pair_log_seq_by_query: Dict[str, int] = {}
         self._query_variants_cache: Dict[str, list[Tuple[Path, Tuple[int, ...]]]] = {}
-        self.last_matcher_time_s = 0.0
-        self.last_matcher_calls = 0
         self.last_matcher_summary: Dict[str, int] = {
-            "query_features": 0,
-            "map_features": 0,
             "matched_features": 0,
             "inliers": 0,
         }
@@ -68,27 +64,20 @@ class PositioningEngine:
 
         if not match_results:
             return {
-                "query_features": 0,
-                "map_features": 0,
                 "matched_features": 0,
                 "inliers": 0,
             }
 
         mkpts0 = match_results.get("mkpts0")
-        mkpts1 = match_results.get("mkpts1")
         inlier_mask = match_results.get("inliers")
-        query_features = int(match_results.get("query_features", safe_len(mkpts0)))
-        map_features = int(match_results.get("map_features", safe_len(mkpts1)))
         matched_features = int(
             match_results.get(
                 "matched_features",
-                min(safe_len(mkpts0), safe_len(mkpts1)),
+                safe_len(mkpts0),
             )
         )
         inliers = int(np.sum(inlier_mask)) if inlier_mask is not None else 0
         return {
-            "query_features": max(0, query_features),
-            "map_features": max(0, map_features),
             "matched_features": max(0, matched_features),
             "inliers": max(0, inliers),
         }
@@ -648,8 +637,6 @@ class PositioningEngine:
 
         """
         map_filename = str(map_row["Filename"])
-        self.last_matcher_time_s = 0.0
-        self.last_matcher_calls = 0
         self.last_matcher_summary = self._summarize_match_results(None)
         if self.pipeline is None:
             return None
@@ -670,13 +657,9 @@ class PositioningEngine:
         best_variant_shape = query_shape
         best_match_results: Optional[Dict[str, Any]] = None
         best_num_inliers = -1
-        matcher_time_total = 0.0
-        matcher_calls = 0
 
         for v_path, v_shape in variants:
             current_results = self.pipeline.match(v_path, map_match_path)
-            matcher_time_total += float(current_results.get("time", 0.0))
-            matcher_calls += 1
             current_mask = current_results.get("inliers")
             current_inliers = (
                 int(np.sum(current_mask)) if current_mask is not None else 0
@@ -687,8 +670,6 @@ class PositioningEngine:
                 best_variant_path = v_path
                 best_variant_shape = v_shape
 
-        self.last_matcher_time_s = matcher_time_total
-        self.last_matcher_calls = matcher_calls
         self.last_matcher_summary = self._summarize_match_results(best_match_results)
 
         if best_match_results is None:
@@ -766,13 +747,10 @@ class PositioningEngine:
             "map_filename": map_filename,
             "inliers": int(num_inliers),
             "outliers": len(match_results.get("mkpts0", [])) - int(num_inliers),
-            "time": match_results.get("time", 0.0),
             "pred_lat": pos_res["pred_lat"],
             "pred_lon": pos_res["pred_lon"],
             "error_meters": pos_res["error_meters"],
             "homography": match_results.get("homography"),
-            "query_features": self.last_matcher_summary["query_features"],
-            "map_features": self.last_matcher_summary["map_features"],
             "matched_features": self.last_matcher_summary["matched_features"],
             "effective_map_metadata": effective_map_row,
             "query_shape": best_variant_shape,

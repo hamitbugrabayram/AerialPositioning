@@ -192,7 +192,7 @@ class MinimaPipeline(BaseMatcher):
             if hasattr(mconf, "cpu"):
                 mconf = mconf.cpu().numpy()
 
-            self._set_feature_counts(results, len(mkpts0), len(mkpts1), len(mkpts0))
+            self._set_feature_counts(results, len(mkpts0))
 
             results["mkpts0"] = mkpts0
             results["mkpts1"] = mkpts1

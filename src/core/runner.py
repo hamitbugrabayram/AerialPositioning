@@ -290,9 +290,6 @@ class PositioningRunner:
             m_res = self.engine.match_query_to_map(
                 q_for_match, q_shape, row, m_row, res_dir, min_inliers, save_viz
             )
-            res.matcher_time_frame_s += float(
-                getattr(self.engine, "last_matcher_time_s", 0.0)
-            )
             best_match_observation = self._update_match_observation(
                 res,
                 getattr(self.engine, "last_matcher_summary", {}),
@@ -430,9 +427,7 @@ class PositioningRunner:
 
         """
         res.best_map_filename, res.inliers = m_res["map_filename"], m_res["inliers"]
-        res.outliers, res.time = m_res["outliers"], m_res["time"]
-        res.query_features = int(m_res.get("query_features", res.query_features))
-        res.map_features = int(m_res.get("map_features", res.map_features))
+        res.outliers = m_res["outliers"]
         res.matched_features = int(m_res.get("matched_features", res.matched_features))
         res.predicted_latitude, res.predicted_longitude = (
             m_res["pred_lat"],
@@ -454,8 +449,6 @@ class PositioningRunner:
         if score <= best_score:
             return best_score
 
-        res.query_features = int(summary.get("query_features", res.query_features))
-        res.map_features = int(summary.get("map_features", res.map_features))
         res.matched_features = int(
             summary.get("matched_features", res.matched_features)
         )
