@@ -25,21 +25,18 @@ class OrbPipeline(BaseMatcher):
         """Initializes the classical feature matcher."""
         super().__init__(config)
 
-        matcher_params = config.get("matcher_params", {})
-        params = matcher_params.get("orb") or matcher_params.get("rule_based", {})
-        self.max_features = max(128, int(params.get("max_features", 4000)))
-        self.scale_factor = max(1.01, float(params.get("scale_factor", 1.2)))
-        self.nlevels = max(1, int(params.get("nlevels", 8)))
-        self.edge_threshold = max(5, int(params.get("edge_threshold", 31)))
-        self.patch_size = max(5, int(params.get("patch_size", 31)))
-        self.fast_threshold = max(0, int(params.get("fast_threshold", 12)))
-        self.ratio_test = min(max(float(params.get("ratio_test", 0.8)), 0.1), 0.99)
-        self.max_matches = max(0, int(params.get("max_matches", 1500)))
-        self.resize_max = max(0, int(params.get("resize_max", 1600)))
-        self.use_clahe = bool(params.get("use_clahe", True))
-        self.min_descriptor_matches = max(
-            4, int(params.get("min_descriptor_matches", 12))
-        )
+        params = config["matcher_params"]["orb"]
+        self.max_features = max(128, int(params["max_features"]))
+        self.scale_factor = max(1.01, float(params["scale_factor"]))
+        self.nlevels = max(1, int(params["nlevels"]))
+        self.edge_threshold = max(5, int(params["edge_threshold"]))
+        self.patch_size = max(5, int(params["patch_size"]))
+        self.fast_threshold = max(0, int(params["fast_threshold"]))
+        self.ratio_test = min(max(float(params["ratio_test"]), 0.1), 0.99)
+        self.max_matches = max(0, int(params["max_matches"]))
+        self.resize_max = max(0, int(params["resize_max"]))
+        self.use_clahe = bool(params["use_clahe"])
+        self.min_descriptor_matches = max(4, int(params["min_descriptor_matches"]))
 
         self.detector = cv2.ORB_create(
             nfeatures=self.max_features,

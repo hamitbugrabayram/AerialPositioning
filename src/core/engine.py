@@ -101,15 +101,12 @@ class PositioningEngine:
         ``enabled``, ``save_failed``, ``save_matched``, and optional
         ``max_unique_pairs`` keys.
 
-        Falls back to the legacy ``failed_pair_logging`` key when the
-        modern key is absent.
-
         Returns:
             Dictionary with ``enabled``, ``save_failed``,
             ``save_matched``, and ``max_unique_pairs``.
 
         """
-        pair_cfg = self.config.positioning_params.get("pair_logging", {})
+        pair_cfg = self.config.positioning_params["pair_logging"]
         if isinstance(pair_cfg, bool):
             return {
                 "enabled": pair_cfg,
@@ -131,16 +128,10 @@ class PositioningEngine:
                 "save_matched": bool(pair_cfg.get("save_matched", True)),
                 "max_unique_pairs": max_unique_pairs,
             }
-
-        legacy_cfg = self.config.positioning_params.get("failed_pair_logging", {})
-        if isinstance(legacy_cfg, bool):
-            enabled = legacy_cfg
-        else:
-            enabled = bool(legacy_cfg.get("enabled", False))
         return {
-            "enabled": enabled,
+            "enabled": False,
             "save_failed": True,
-            "save_matched": False,
+            "save_matched": True,
             "max_unique_pairs": None,
         }
 
@@ -321,17 +312,13 @@ class PositioningEngine:
 
     def _map_context_enabled(self) -> bool:
         """Returns whether contextual map composition is enabled."""
-        map_context = self.config.positioning_params.get("map_context", {})
-        if isinstance(map_context, bool):
-            return map_context
-        return bool(map_context.get("enabled", False))
+        map_context = self.config.positioning_params["map_context"]
+        return bool(map_context["enabled"])
 
     def _save_map_context_maps(self) -> bool:
         """Returns whether stitched context maps should be persisted."""
-        map_context = self.config.positioning_params.get("map_context", {})
-        if isinstance(map_context, dict):
-            return bool(map_context.get("save_context_maps", False))
-        return False
+        map_context = self.config.positioning_params["map_context"]
+        return bool(map_context["save_context_maps"])
 
     def _map_context_coverage_factor(self) -> float:
         """Returns the altitude-to-ground-coverage multiplier.
@@ -343,13 +330,11 @@ class PositioningEngine:
         * 2.0 -- moderate, suits most consumer drones (~75-85 deg).
         * 2.5 -- generous, suits wide-angle cameras (>85 deg).
         """
-        map_context = self.config.positioning_params.get("map_context", {})
-        if isinstance(map_context, dict):
-            try:
-                return max(0.5, float(map_context.get("coverage_factor", 2.0)))
-            except Exception:
-                return 2.0
-        return 2.0
+        map_context = self.config.positioning_params["map_context"]
+        try:
+            return max(0.5, float(map_context["coverage_factor"]))
+        except Exception:
+            return 2.0
 
     def _calculate_adaptive_grid_size(
         self,
@@ -376,13 +361,12 @@ class PositioningEngine:
             Odd integer grid size (1, 3, 5, ...).
 
         """
-        map_ctx = self.config.positioning_params.get("map_context", {})
+        map_ctx = self.config.positioning_params["map_context"]
         max_grid = 5
-        if isinstance(map_ctx, dict):
-            try:
-                max_grid = int(map_ctx.get("max_grid", 5))
-            except (TypeError, ValueError):
-                max_grid = 5
+        try:
+            max_grid = int(map_ctx["max_grid"])
+        except (TypeError, ValueError):
+            max_grid = 5
 
         if altitude_m <= 0:
             return min(3, max_grid)

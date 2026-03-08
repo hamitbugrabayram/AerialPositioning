@@ -226,14 +226,14 @@ class PositioningRunner:
         p_cfg = self.config.preprocessing
         temp_dir = None
         if self.assets_dir is not None:
-            if p_cfg.get("save_processed", False):
+            if p_cfg["save_processed"]:
                 temp_dir = self.assets_dir / "processed_queries"
             else:
                 temp_dir = self.assets_dir / ".tmp_processed_queries"
         if temp_dir:
             temp_dir.mkdir(parents=True, exist_ok=True)
-        m_inl = int(self.config.positioning_params.get("min_inliers_for_success", 10))
-        s_viz = bool(self.config.positioning_params.get("save_visualization", False))
+        m_inl = int(self.config.positioning_params["min_inliers_for_success"])
+        s_viz = bool(self.config.positioning_params["save_visualization"])
         for _, row in self.query_df.iterrows():
             try:
                 results.append(self._process_single_query(row, temp_dir, m_inl, s_viz))
@@ -484,7 +484,7 @@ class PositioningRunner:
         """
         if self.assets_dir is None:
             return
-        if self.config.preprocessing.get("save_processed", False):
+        if self.config.preprocessing["save_processed"]:
             return
         tmp_dir = self.assets_dir / ".tmp_processed_queries"
         if tmp_dir.exists():

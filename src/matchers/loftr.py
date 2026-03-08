@@ -57,21 +57,19 @@ class LoFTRPipeline(BaseMatcher):
         super().__init__(config)
         self._device = torch.device(self.device)
 
-        weights_config = config.get("matcher_weights", {})
-        self.loftr_params = config.get("matcher_params", {}).get("loftr", {})
+        weights_config = config["matcher_weights"]
+        self.loftr_params = config["matcher_params"]["loftr"]
 
-        weights_path = weights_config.get("loftr_weights_path")
-        if not weights_path or not Path(weights_path).is_file():
+        weights_path = weights_config["loftr_weights_path"]
+        if not Path(weights_path).is_file():
             raise FileNotFoundError(f"LoFTR weights not found: {weights_path}")
 
         self._weights_name = Path(weights_path).stem
 
         model_config = deepcopy(loftr_default_cfg)
 
-        if "temp_bug_fix" in self.loftr_params:
-            model_config["coarse"]["temp_bug_fix"] = self.loftr_params["temp_bug_fix"]
-        if "match_thr" in self.loftr_params:
-            model_config["match_coarse"]["thr"] = self.loftr_params["match_thr"]
+        model_config["coarse"]["temp_bug_fix"] = self.loftr_params["temp_bug_fix"]
+        model_config["match_coarse"]["thr"] = self.loftr_params["match_thr"]
 
         self.model = LoFTRModel(config=model_config)
         self._load_weights(weights_path)

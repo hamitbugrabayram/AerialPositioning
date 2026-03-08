@@ -5,7 +5,7 @@ providing structured access to positioning parameters and output data.
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import yaml
 
@@ -92,6 +92,150 @@ class PositioningConfig:
     positioning_params: Dict[str, Any]
     tile_provider: Dict[str, Any]
 
+    @staticmethod
+    def _require_mapping(container: Dict[str, Any], key: str) -> Dict[str, Any]:
+        """Returns a required mapping value or raises a config error."""
+        value = container.get(key)
+        if not isinstance(value, dict):
+            raise ValueError(f"Config key '{key}' must be a mapping.")
+        return value
+
+    @staticmethod
+    def _require_keys(mapping: Dict[str, Any], keys: List[str], prefix: str) -> None:
+        """Ensures required keys are present in a mapping."""
+        missing = [key for key in keys if key not in mapping]
+        if missing:
+            missing_text = ", ".join(f"{prefix}.{key}" for key in missing)
+            raise ValueError(f"Missing required config key(s): {missing_text}")
+
+    @classmethod
+    def _validate_config(cls, config: Dict[str, Any]) -> None:
+        """Validates required config structure and matcher-specific fields."""
+        cls._require_keys(
+            config,
+            [
+                "matcher_type",
+                "device",
+                "preprocessing",
+                "matcher_weights",
+                "matcher_params",
+                "ransac_params",
+                "positioning_params",
+                "tile_provider",
+            ],
+            "config",
+        )
+
+        preprocessing = cls._require_mapping(config, "preprocessing")
+        cls._require_keys(preprocessing, ["save_processed"], "preprocessing")
+
+        matcher_weights = cls._require_mapping(config, "matcher_weights")
+        matcher_params = cls._require_mapping(config, "matcher_params")
+        ransac_params = cls._require_mapping(config, "ransac_params")
+        positioning_params = cls._require_mapping(config, "positioning_params")
+        tile_provider = cls._require_mapping(config, "tile_provider")
+
+        cls._require_keys(
+            ransac_params,
+            ["confidence", "max_iter", "method", "reproj_threshold"],
+            "ransac_params",
+        )
+        cls._require_keys(tile_provider, ["name", "cache_dir"], "tile_provider")
+        cls._require_keys(
+            positioning_params,
+            [
+                "min_inliers_for_success",
+                "save_visualization",
+                "save_frame_sequence",
+                "sample_interval",
+                "map_context",
+                "pair_logging",
+                "adaptive_search",
+            ],
+            "positioning_params",
+        )
+
+        map_context = cls._require_mapping(positioning_params, "map_context")
+        cls._require_keys(
+            map_context,
+            ["enabled", "coverage_factor", "max_grid", "save_context_maps"],
+            "positioning_params.map_context",
+        )
+        pair_logging = cls._require_mapping(positioning_params, "pair_logging")
+        cls._require_keys(
+            pair_logging,
+            ["enabled", "save_failed", "save_matched", "max_unique_pairs"],
+            "positioning_params.pair_logging",
+        )
+        adaptive_search = cls._require_mapping(positioning_params, "adaptive_search")
+        cls._require_keys(
+            adaptive_search,
+            [
+                "strategy",
+                "initial_radius_m",
+                "max_radius_m",
+                "skip_penalty_m",
+                "synthetic_ins_noise_sigma_m",
+                "synthetic_ins_noise_max_m",
+            ],
+            "positioning_params.adaptive_search",
+        )
+
+        matcher_type = str(config["matcher_type"]).lower()
+        required_weights_by_matcher = {
+            "gim": ["gim_model_type", "gim_weights_path"],
+            "lightglue": ["lightglue_features"],
+            "loftr": ["loftr_weights_path"],
+            "minima": [
+                "minima_method",
+                "minima_weights_dir",
+                "minima_xoftr_ckpt",
+                "minima_loftr_ckpt",
+                "minima_sp_lg_ckpt",
+            ],
+            "orb": [],
+        }
+        required_params_by_matcher = {
+            "gim": [
+                "dkm_h",
+                "dkm_w",
+                "gim_lightglue_max_keypoints",
+                "gim_lightglue_filter_threshold",
+                "resize_max",
+                "dfactor",
+            ],
+            "lightglue": ["extractor_max_keypoints"],
+            "loftr": ["match_thr", "temp_bug_fix", "resize"],
+            "minima": ["match_threshold", "fine_threshold", "loftr_threshold"],
+            "orb": [
+                "max_features",
+                "scale_factor",
+                "nlevels",
+                "edge_threshold",
+                "patch_size",
+                "ratio_test",
+                "max_matches",
+                "fast_threshold",
+                "min_descriptor_matches",
+                "resize_max",
+                "use_clahe",
+            ],
+        }
+        if matcher_type not in required_params_by_matcher:
+            raise ValueError(f"Unsupported matcher_type '{matcher_type}'.")
+
+        cls._require_keys(
+            matcher_weights,
+            required_weights_by_matcher[matcher_type],
+            "matcher_weights",
+        )
+        matcher_param_block = cls._require_mapping(matcher_params, matcher_type)
+        cls._require_keys(
+            matcher_param_block,
+            required_params_by_matcher[matcher_type],
+            f"matcher_params.{matcher_type}",
+        )
+
     @classmethod
     def from_yaml(cls, config_path: str) -> "PositioningConfig":
         """Load configuration from YAML file.
@@ -110,59 +254,21 @@ class PositioningConfig:
         with open(config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
-        positioning_params = config.get("positioning_params", {})
+        if not isinstance(config, dict):
+            raise ValueError("Config root must be a mapping.")
+        cls._validate_config(config)
+        positioning_params = config["positioning_params"]
         return cls(
-            matcher_type=config.get("matcher_type", "gim"),
-            device=config.get("device", "cuda"),
+            matcher_type=config["matcher_type"],
+            device=config["device"],
             data_paths=config.get("data_paths", {}),
-            preprocessing=config.get(
-                "preprocessing",
-                {"save_processed": False},
-            ),
+            preprocessing=config["preprocessing"],
             camera_model=config.get("camera_model"),
-            matcher_weights=config.get(
-                "matcher_weights",
-                {
-                    "gim_model_type": "lightglue",
-                    "gim_weights_path": "matchers/gim/weights/gim_lightglue_100h.ckpt",
-                    "lightglue_features": "superpoint",
-                    "loftr_weights_path": "matchers/LoFTR/weights/outdoor_ds.ckpt",
-                },
-            ),
-            matcher_params=config.get("matcher_params", {}),
-            ransac_params=config.get(
-                "ransac_params",
-                {
-                    "confidence": 0.999,
-                    "max_iter": 10000,
-                    "method": "RANSAC",
-                    "reproj_threshold": 5.0,
-                },
-            ),
-            positioning_params=positioning_params
-            or {
-                "min_inliers_for_success": 75,
-                "save_visualization": True,
-                "sample_interval": 1,
-                "save_frame_sequence": False,
-                "map_context": {
-                    "enabled": False,
-                    "coverage_factor": 2.0,
-                    "max_grid": 5,
-                    "save_context_maps": False,
-                },
-                "adaptive_search": {
-                    "strategy": "synthetic_ins_drift",
-                    "initial_radius_m": 1000.0,
-                    "max_radius_m": 2000.0,
-                    "skip_penalty_m": 200.0,
-                    "synthetic_ins_noise_sigma_m": 30.0,
-                    "synthetic_ins_noise_max_m": 100.0,
-                },
-            },
-            tile_provider=config.get(
-                "tile_provider", {"name": "esri", "cache_dir": "satellite"}
-            ),
+            matcher_weights=config["matcher_weights"],
+            matcher_params=config["matcher_params"],
+            ransac_params=config["ransac_params"],
+            positioning_params=positioning_params,
+            tile_provider=config["tile_provider"],
         )
 
     def to_dict(self) -> Dict[str, Any]:

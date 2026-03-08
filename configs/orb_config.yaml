@@ -4,9 +4,15 @@ device: cuda
 preprocessing:
   save_processed: false
 
+matcher_weights: {}
+
 matcher_params:
   orb:
     max_features: 4000
+    scale_factor: 1.2
+    nlevels: 8
+    edge_threshold: 31
+    patch_size: 31
     resize_max: 1600
     ratio_test: 0.8
     max_matches: 1500

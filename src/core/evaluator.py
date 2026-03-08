@@ -54,7 +54,6 @@ class Evaluator(PositioningRunner):
     """
 
     _VALID_STRATEGIES = ("synthetic_ins_drift", "adaptive_radius")
-    _LEGACY_STRATEGY_ALIASES = {"ins_simulation": "synthetic_ins_drift"}
 
     _M_PER_DEG_LAT = 111_320.0
 
@@ -70,43 +69,26 @@ class Evaluator(PositioningRunner):
         self.sampled_query_df: Optional[pd.DataFrame] = None
         self.frames_dir: Optional[Path] = None
         self.save_frame_sequence = bool(
-            self.config.positioning_params.get("save_frame_sequence", False)
+            self.config.positioning_params["save_frame_sequence"]
         )
-        self.sample_interval: int = int(
-            self.config.positioning_params.get("sample_interval", 1)
-        )
+        self.sample_interval = int(self.config.positioning_params["sample_interval"])
         if self.sample_interval <= 0:
             self.sample_interval = 1
 
-        search_conf = self.config.positioning_params.get("adaptive_search", {})
-        requested_strategy = str(
-            search_conf.get("strategy", "synthetic_ins_drift")
-        ).lower()
-        self.strategy = self._LEGACY_STRATEGY_ALIASES.get(
-            requested_strategy, requested_strategy
-        )
-        if requested_strategy != self.strategy:
-            _logger.warning(
-                "Strategy 'ins_simulation' is deprecated; "
-                "using 'synthetic_ins_drift' instead."
-            )
+        search_conf = self.config.positioning_params["adaptive_search"]
+        self.strategy = str(search_conf["strategy"]).lower()
         if self.strategy not in self._VALID_STRATEGIES:
-            _logger.warning(
-                f"Unknown strategy '{self.strategy}', "
-                f"falling back to 'synthetic_ins_drift'."
+            raise ValueError(
+                f"Unknown adaptive_search.strategy '{self.strategy}'. "
+                "Expected 'synthetic_ins_drift' or 'adaptive_radius'."
             )
-            self.strategy = "synthetic_ins_drift"
-        self.initial_radius_m = float(search_conf.get("initial_radius_m", 1000.0))
-        self.max_radius_m = float(search_conf.get("max_radius_m", 2000.0))
-        self.skip_penalty_m = float(search_conf.get("skip_penalty_m", 200.0))
-        synthetic_ins_noise_sigma = search_conf.get("synthetic_ins_noise_sigma_m")
-        if synthetic_ins_noise_sigma is None:
-            synthetic_ins_noise_sigma = search_conf.get("ins_noise_sigma_m", 30.0)
-        synthetic_ins_noise_max = search_conf.get("synthetic_ins_noise_max_m")
-        if synthetic_ins_noise_max is None:
-            synthetic_ins_noise_max = search_conf.get("ins_noise_max_m", 100.0)
-        self.synthetic_ins_noise_sigma_m = float(synthetic_ins_noise_sigma)
-        self.synthetic_ins_noise_max_m = float(synthetic_ins_noise_max)
+        self.initial_radius_m = float(search_conf["initial_radius_m"])
+        self.max_radius_m = float(search_conf["max_radius_m"])
+        self.skip_penalty_m = float(search_conf["skip_penalty_m"])
+        self.synthetic_ins_noise_sigma_m = float(
+            search_conf["synthetic_ins_noise_sigma_m"]
+        )
+        self.synthetic_ins_noise_max_m = float(search_conf["synthetic_ins_noise_max_m"])
 
         _logger.info(f"Search strategy: {self.strategy}")
 
@@ -230,10 +212,8 @@ class Evaluator(PositioningRunner):
         if temp_dir:
             temp_dir.mkdir(parents=True, exist_ok=True)
 
-        min_inliers = int(
-            self.config.positioning_params.get("min_inliers_for_success", 10)
-        )
-        save_viz = bool(self.config.positioning_params.get("save_visualization", False))
+        min_inliers = int(self.config.positioning_params["min_inliers_for_success"])
+        save_viz = bool(self.config.positioning_params["save_visualization"])
         return temp_dir, min_inliers, save_viz
 
     def _handle_result(

@@ -139,10 +139,10 @@ class GimPipeline(BaseMatcher):
         super().__init__(config)
         self._device = torch.device(self.device)
 
-        weights_config = config.get("matcher_weights", {})
-        self.model_type = weights_config.get("gim_model_type", "dkm").lower()
-        self.weights_path = weights_config.get("gim_weights_path")
-        self.gim_params = config.get("matcher_params", {}).get("gim", {})
+        weights_config = config["matcher_weights"]
+        self.model_type = weights_config["gim_model_type"].lower()
+        self.weights_path = weights_config["gim_weights_path"]
+        self.gim_params = config["matcher_params"]["gim"]
 
         if self.model_type not in self.SUPPORTED_MODELS:
             raise ValueError(
@@ -202,7 +202,7 @@ class GimPipeline(BaseMatcher):
             image,
             grayscale=grayscale,
             resize_max=self.gim_params.get("resize_max"),
-            dfactor=self.gim_params.get("dfactor", 8),
+            dfactor=self.gim_params["dfactor"],
             device=self._device,
         )
 

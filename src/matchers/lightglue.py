@@ -52,11 +52,11 @@ class LightGluePipeline(BaseMatcher):
         super().__init__(config)
         self._device = torch.device(self.device)
 
-        weights_config = config.get("matcher_weights", {})
-        matcher_params = config.get("matcher_params", {}).get("lightglue", {})
+        weights_config = config["matcher_weights"]
+        matcher_params = config["matcher_params"]["lightglue"]
 
-        self._feature_type = weights_config.get("lightglue_features", "superpoint")
-        max_keypoints = matcher_params.get("extractor_max_keypoints", 2048)
+        self._feature_type = weights_config["lightglue_features"]
+        max_keypoints = matcher_params["extractor_max_keypoints"]
 
         if self._feature_type not in self.SUPPORTED_FEATURES:
             raise ValueError(

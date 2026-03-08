@@ -49,19 +49,17 @@ class MinimaPipeline(BaseMatcher):
         """
         super().__init__(config)
 
-        weights_config = config.get("matcher_weights", {})
-        self.minima_params = config.get("matcher_params", {}).get("minima", {})
+        weights_config = config["matcher_weights"]
+        self.minima_params = config["matcher_params"]["minima"]
 
-        self.method = weights_config.get("minima_method", "xoftr").lower()
+        self.method = weights_config["minima_method"].lower()
         if self.method not in self.SUPPORTED_METHODS:
             raise ValueError(
                 f"Unsupported MINIMA method: '{self.method}'. "
                 f"Supported: {self.SUPPORTED_METHODS}"
             )
 
-        weights_dir_raw = weights_config.get(
-            "minima_weights_dir", "matchers/MINIMA/weights"
-        )
+        weights_dir_raw = weights_config["minima_weights_dir"]
         weights_dir = Path(weights_dir_raw)
         if not weights_dir.is_absolute():
             weights_dir = Path(__file__).resolve().parent.parent.parent / weights_dir
@@ -139,18 +137,18 @@ class MinimaPipeline(BaseMatcher):
         args = Namespace()
 
         if self.method == "xoftr":
-            ckpt_name = weights_config.get("minima_xoftr_ckpt", "minima_xoftr.ckpt")
+            ckpt_name = weights_config["minima_xoftr_ckpt"]
             args.ckpt = str(weights_dir / ckpt_name)
-            args.match_threshold = self.minima_params.get("match_threshold", 0.3)
-            args.fine_threshold = self.minima_params.get("fine_threshold", 0.1)
+            args.match_threshold = self.minima_params["match_threshold"]
+            args.fine_threshold = self.minima_params["fine_threshold"]
 
         elif self.method == "loftr":
-            ckpt_name = weights_config.get("minima_loftr_ckpt", "minima_loftr.ckpt")
+            ckpt_name = weights_config["minima_loftr_ckpt"]
             args.ckpt = str(weights_dir / ckpt_name)
-            args.thr = self.minima_params.get("loftr_threshold", 0.2)
+            args.thr = self.minima_params["loftr_threshold"]
 
         elif self.method == "sp_lg":
-            ckpt_name = weights_config.get("minima_sp_lg_ckpt", "minima_lightglue.pth")
+            ckpt_name = weights_config["minima_sp_lg_ckpt"]
             args.ckpt = str(weights_dir / ckpt_name)
 
         return args

@@ -74,7 +74,7 @@ class BaseMatcher(ABC):
 
         """
         self.config = config
-        requested_device = str(config.get("device", "cuda")).lower()
+        requested_device = str(config["device"]).lower()
         if requested_device.startswith("cuda") and not torch.cuda.is_available():
             _logger.info(
                 "WARNING: CUDA requested but not available. Falling back to CPU."
@@ -83,11 +83,11 @@ class BaseMatcher(ABC):
         else:
             self.device = requested_device
 
-        self.ransac_params = config.get("ransac_params", {})
-        self.ransac_method = self.ransac_params.get("method", "RANSAC")
-        self.ransac_thresh = self.ransac_params.get("reproj_threshold", 8.0)
-        self.ransac_conf = self.ransac_params.get("confidence", 0.999)
-        self.ransac_iter = self.ransac_params.get("max_iter", 10000)
+        self.ransac_params = config["ransac_params"]
+        self.ransac_method = self.ransac_params["method"]
+        self.ransac_thresh = self.ransac_params["reproj_threshold"]
+        self.ransac_conf = self.ransac_params["confidence"]
+        self.ransac_iter = self.ransac_params["max_iter"]
 
         if self.ransac_method == "USAC_MAGSAC":
             self.cv2_method = cv2.USAC_MAGSAC
