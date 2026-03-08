@@ -6,18 +6,21 @@ This script manages the end-to-end pipeline:
 3. "eval-results": Generate summary report.
 """
 
-
 import argparse
 import subprocess
 import sys
 import traceback
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
+
+import yaml
 
 from src.utils.dataset_manager import DatasetManager
 from src.utils.reporting import ReportGenerator
 
 from src.utils.logger import get_logger
+
 _logger = get_logger(__name__)
 
 
@@ -65,13 +68,97 @@ class Runner:
             return list(range(1, 12))
         return [int(x) for x in args_input if x.isdigit()]
 
-    def run_dataset_eval(self, index: int, zoom: int, provider: str) -> None:
+    def _parse_results_targets(
+        self, args_input: Optional[List[str]]
+    ) -> Optional[List[str]]:
+        """Parses result-summary targets from CLI input.
+
+        Args:
+            args_input: Raw values passed to ``--eval-results``.
+
+        Returns:
+            ``None`` when the flag is absent, an empty list when all
+            results should be summarized, or a list of requested
+            results subfolders.
+
+        """
+        if args_input is None:
+            return None
+
+        targets = [str(item).strip() for item in args_input if str(item).strip()]
+        if not targets or (len(targets) == 1 and targets[0].lower() == "all"):
+            return []
+        return targets
+
+    def _resolve_config_path(self, config_arg: str) -> Path:
+        """Resolves and validates the base configuration path."""
+        config_path = Path(config_arg).expanduser().resolve()
+        if not config_path.exists():
+            raise FileNotFoundError(f"Config file not found: {config_path}")
+        return config_path
+
+    def _resolve_results_subdir(self, subdir: Optional[str]) -> Path:
+        """Returns a safe results container inside ``results/``."""
+        root = self.results_root.resolve()
+        if not subdir:
+            return root
+
+        candidate = (root / subdir).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError as exc:
+            raise ValueError("Results subfolder must stay inside results/.") from exc
+        return candidate
+
+    def _matcher_name_from_config(self, config_path: Path) -> str:
+        """Extracts a filesystem-safe matcher name from a YAML config."""
+        try:
+            with open(config_path, "r", encoding="utf-8") as file:
+                cfg = yaml.safe_load(file) or {}
+        except Exception as exc:
+            raise RuntimeError(f"Failed to read config '{config_path}': {exc}") from exc
+
+        matcher_name = str(cfg.get("matcher_type", "unknown")).strip().upper()
+        if not matcher_name:
+            matcher_name = "UNKNOWN"
+        return "".join(
+            char if char.isalnum() or char in {"-", "_"} else "_"
+            for char in matcher_name
+        )
+
+    def _create_results_batch_dir(self, config_path: Path) -> Path:
+        """Creates an automatic results batch directory.
+
+        The directory name is derived from the selected matcher and the
+        current timestamp, e.g. ``MINIMA_2026_03_09_15_45_00``.
+
+        """
+        matcher_name = self._matcher_name_from_config(config_path)
+        timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+        batch_dir = self.results_root / f"{matcher_name}_{timestamp}"
+        suffix = 1
+        while batch_dir.exists():
+            batch_dir = self.results_root / f"{matcher_name}_{timestamp}_{suffix:02d}"
+            suffix += 1
+        batch_dir.mkdir(parents=True, exist_ok=False)
+        return batch_dir
+
+    def run_dataset_eval(
+        self,
+        index: int,
+        zoom: int,
+        provider: str,
+        results_batch_dir: Optional[Path] = None,
+    ) -> None:
         """Runs primary visual positioning for a specific region, zoom, and provider.
 
         Args:
             index (int): Region index.
             zoom (int): Zoom level for satellite tiles.
             provider (str): Satellite tile provider (e.g., "esri", "google").
+            results_batch_dir: Optional auto-generated batch directory
+                under ``results/`` where experiment outputs should be
+                stored.
 
         Raises:
             RuntimeError: If the positioning process fails.
@@ -93,7 +180,8 @@ class Runner:
             )
 
         exp_folder_name = f"{region_name}_{region_id}_zoom_{zoom}_{provider}"
-        output_path = self.results_root / exp_folder_name
+        output_root = results_batch_dir or self.results_root
+        output_path = output_root / exp_folder_name
 
         try:
             config_path = self.dataset_manager.generate_region_config(
@@ -149,8 +237,14 @@ class Runner:
         parser.add_argument(
             "--eval-results",
             nargs="*",
-            metavar="ID",
-            help="Step 3: Generate summary report and GIFs",
+            metavar="TARGET",
+            help="Step 3: Generate summary report for all results or a named results subfolder",
+        )
+        parser.add_argument(
+            "--config",
+            type=str,
+            default=str(self.base_config_path),
+            help="Base YAML config used for dataset evaluation (default: config.yaml)",
         )
         parser.add_argument(
             "--zoom-levels",
@@ -178,12 +272,32 @@ class Runner:
 
         prep_ids = self._parse_region_ids(args.dataset_prepare)
         eval_ids = self._parse_region_ids(args.dataset_eval)
-        summary_ids = self._parse_region_ids(args.eval_results)
+        summary_targets = self._parse_results_targets(args.eval_results)
+        eval_results_batch_dir: Optional[Path] = None
+
+        if args.dataset_eval is not None:
+            try:
+                self.base_config_path = self._resolve_config_path(args.config)
+                self.dataset_manager.base_config_path = self.base_config_path
+            except Exception as e:
+                _logger.info(f"ERROR: {e}")
+                sys.exit(1)
+
         if prep_ids or eval_ids:
             if not args.tile_provider:
                 print(
                     "ERROR: --tile-provider is mandatory for preparation and evaluation."
                 )
+                sys.exit(1)
+
+        if eval_ids:
+            try:
+                eval_results_batch_dir = self._create_results_batch_dir(
+                    self.base_config_path
+                )
+                _logger.info(f"Evaluation batch directory: {eval_results_batch_dir}")
+            except Exception as e:
+                _logger.info(f"ERROR: Failed to create results directory: {e}")
                 sys.exit(1)
 
         if prep_ids:
@@ -197,7 +311,9 @@ class Runner:
                         z = self.dataset_manager.auto_zoom_for_region(i)
                         zooms = [z]
                     self.dataset_manager.prepare_region_data(
-                        i, zooms, args.tile_provider,
+                        i,
+                        zooms,
+                        args.tile_provider,
                         map_margin_m=args.map_margin,
                     )
                 except Exception as e:
@@ -237,14 +353,21 @@ class Runner:
                             zooms = [nearest]
                     for z in zooms:
                         try:
-                            self.run_dataset_eval(i, z, p)
+                            self.run_dataset_eval(i, z, p, eval_results_batch_dir)
                         except Exception as e:
                             _logger.info(f"Error during evaluation for Region {i}: {e}")
                             sys.exit(1)
 
-        if summary_ids is not None:
+        if summary_targets is not None:
             try:
-                self.report_generator.generate_summary(summary_ids)
+                if not summary_targets:
+                    self.report_generator.generate_summary()
+                else:
+                    search_roots = [
+                        self._resolve_results_subdir(target)
+                        for target in summary_targets
+                    ]
+                    self.report_generator.generate_summary(search_roots=search_roots)
             except Exception as e:
                 _logger.info(f"Error: Summary failed: {e}")
                 sys.exit(1)

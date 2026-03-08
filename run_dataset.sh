@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sequential evaluation for all regions
+# Batch preparation and evaluation for all regions
 
 set -euo pipefail
 
@@ -37,13 +37,11 @@ echo "=========================================="
 python runner.py --dataset-prepare all --tile-provider google esri --map-margin 3000
 echo "Dataset preparation DONE at $(date)"
 
-for region in $(seq 1 11); do
-  echo "=========================================="
-  echo "Starting Region ${region} (auto zoom) at $(date)"
-  echo "=========================================="
-  python runner.py --dataset-eval "$region" --tile-provider google esri
-  echo "Region ${region} DONE at $(date)"
-done
+echo "=========================================="
+echo "Starting evaluation for all regions (auto zoom) at $(date)"
+echo "=========================================="
+python runner.py --dataset-eval all --tile-provider google esri
+echo "All-region evaluation DONE at $(date)"
 
 echo "=========================================="
 echo "ALL REGIONS COMPLETE at $(date)"

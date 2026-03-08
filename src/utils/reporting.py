@@ -6,12 +6,13 @@ from __future__ import annotations
 import math
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 import pandas as pd
 import yaml
 
 from src.utils.logger import get_logger
+
 _logger = get_logger(__name__)
 
 
@@ -112,11 +113,49 @@ class ReportGenerator:
         fallback = sorted(exp_dir.rglob("positioning_results.csv"))
         return fallback[-1] if fallback else None
 
-    def get_experiment_metrics(self, exp_dir: Path) -> Optional[Dict[str, Any]]:
+    def _discover_experiment_dirs(self, search_root: Path) -> List[Path]:
+        """Discovers experiment directories under a results root.
+
+        Args:
+            search_root: Results root or results subfolder to scan.
+
+        Returns:
+            Sorted list of experiment directories that contain a
+            ``positioning_results.csv`` file.
+
+        """
+        if not search_root.exists():
+            return []
+
+        experiment_dirs = set()
+        for csv_path in search_root.rglob("positioning_results.csv"):
+            exp_dir = csv_path.parent
+            if exp_dir.name == "output":
+                exp_dir = exp_dir.parent
+            experiment_dirs.add(exp_dir.resolve())
+
+        return sorted(experiment_dirs)
+
+    def _numeric_series(self, df: pd.DataFrame, column: str) -> pd.Series:
+        """Returns a numeric Series for a DataFrame column.
+
+        Missing columns yield an empty float series.
+        """
+        if column not in df.columns:
+            return pd.Series(dtype=float)
+        series = cast(pd.Series, pd.to_numeric(df[column], errors="coerce"))
+        return series.dropna()
+
+    def get_experiment_metrics(
+        self,
+        exp_dir: Path,
+        display_root: Optional[Path] = None,
+    ) -> Optional[Dict[str, Any]]:
         """Parses positioning results and computes summary metrics.
 
         Args:
             exp_dir: Experiment directory path.
+            display_root: Root used to format relative experiment names.
 
         Returns:
             Aggregated experiment metrics dictionary, or `None` if no valid
@@ -133,31 +172,33 @@ class ReportGenerator:
 
         info = self._parse_experiment_name(exp_dir.name)
         cfg_info = self._read_config_metadata(exp_dir)
-        success_mask = df["Positioning Success"].fillna(False).astype(bool)
-        success_df = df[success_mask]
+        success_mask = cast(
+            pd.Series, df["Positioning Success"].fillna(False).astype(bool)
+        )
+        success_df = cast(pd.DataFrame, df[success_mask])
 
         total = int(len(df))
         success = int(len(success_df))
         failed = total - success
         success_rate = (100.0 * success / total) if total > 0 else 0.0
 
-        errors = pd.to_numeric(success_df.get("Error (m)"), errors="coerce").dropna()
-        inliers = pd.to_numeric(success_df.get("Inliers"), errors="coerce").dropna()
-        times = pd.to_numeric(df.get("Best Match Time (s)"), errors="coerce").dropna()
-        candidates = pd.to_numeric(df.get("Candidate Maps"), errors="coerce").dropna()
-        evaluated = pd.to_numeric(df.get("Evaluated Maps"), errors="coerce").dropna()
+        errors = self._numeric_series(success_df, "Error (m)")
+        inliers = self._numeric_series(success_df, "Inliers")
+        times = self._numeric_series(df, "Best Match Time (s)")
+        candidates = self._numeric_series(df, "Candidate Maps")
+        evaluated = self._numeric_series(df, "Evaluated Maps")
 
         radius_counts: Dict[str, int] = {}
         if "Search Radius (m)" in df.columns:
             radius_series = (
-                pd.to_numeric(df["Search Radius (m)"], errors="coerce")
-                .dropna()
+                self._numeric_series(df, "Search Radius (m)")
                 .astype(int)
                 .value_counts()
                 .sort_index()
             )
             radius_counts = {
-                f"{int(radius)}m": int(count) for radius, count in radius_series.items()
+                f"{int(float(cast(Any, radius)))}m": int(count)
+                for radius, count in radius_series.items()
             }
 
         top_failures: Dict[str, int] = {}
@@ -185,8 +226,15 @@ class ReportGenerator:
             """
             return value if not math.isnan(value) else float("nan")
 
+        experiment_label = exp_dir.name
+        if display_root is not None:
+            try:
+                experiment_label = str(exp_dir.relative_to(display_root))
+            except ValueError:
+                experiment_label = exp_dir.name
+
         return {
-            "Experiment": exp_dir.name,
+            "Experiment": experiment_label,
             "RegionID": info["region_id"],
             "Provider": cfg_info.get("provider_cfg", info["provider"]),
             "Zoom": info["zoom"],
@@ -197,31 +245,31 @@ class ReportGenerator:
             "SuccessfulFrames": success,
             "FailedFrames": failed,
             "SuccessRatePct": success_rate,
-            "MeanErrorM": safe_stat(float(errors.mean()))
+            "MeanErrorM": safe_stat(float(cast(Any, errors.mean())))
             if not errors.empty
             else float("nan"),
-            "MedianErrorM": safe_stat(float(errors.median()))
+            "MedianErrorM": safe_stat(float(cast(Any, errors.median())))
             if not errors.empty
             else float("nan"),
-            "StdErrorM": safe_stat(float(errors.std(ddof=1)))
+            "StdErrorM": safe_stat(float(cast(Any, errors.std(ddof=1))))
             if len(errors) > 1
             else float("nan"),
-            "P90ErrorM": safe_stat(float(errors.quantile(0.9)))
+            "P90ErrorM": safe_stat(float(cast(Any, errors.quantile(0.9))))
             if not errors.empty
             else float("nan"),
-            "MaxErrorM": safe_stat(float(errors.max()))
+            "MaxErrorM": safe_stat(float(cast(Any, errors.max())))
             if not errors.empty
             else float("nan"),
-            "MeanInliers": safe_stat(float(inliers.mean()))
+            "MeanInliers": safe_stat(float(cast(Any, inliers.mean())))
             if not inliers.empty
             else float("nan"),
-            "MeanMatchTimeS": safe_stat(float(times.mean()))
+            "MeanMatchTimeS": safe_stat(float(cast(Any, times.mean())))
             if not times.empty
             else float("nan"),
-            "MeanCandidateMaps": safe_stat(float(candidates.mean()))
+            "MeanCandidateMaps": safe_stat(float(cast(Any, candidates.mean())))
             if not candidates.empty
             else float("nan"),
-            "MeanEvaluatedMaps": safe_stat(float(evaluated.mean()))
+            "MeanEvaluatedMaps": safe_stat(float(cast(Any, evaluated.mean())))
             if not evaluated.empty
             else float("nan"),
             "RadiusUsage": radius_counts,
@@ -271,8 +319,8 @@ class ReportGenerator:
             na_position="last",
         )
 
-        total_frames = int(summary_df["TotalFrames"].sum())
-        total_success = int(summary_df["SuccessfulFrames"].sum())
+        total_frames = int(cast(Any, summary_df["TotalFrames"]).sum())
+        total_success = int(cast(Any, summary_df["SuccessfulFrames"]).sum())
         overall_rate = (
             (100.0 * total_success / total_frames) if total_frames > 0 else 0.0
         )
@@ -379,29 +427,51 @@ class ReportGenerator:
 
         return lines
 
-    def generate_summary(self, region_ids: Optional[List[int]] = None) -> None:
+    def generate_summary(
+        self,
+        region_ids: Optional[List[int]] = None,
+        search_roots: Optional[List[Path]] = None,
+    ) -> None:
         """Summarizes all results into markdown and CSV reports.
 
         Args:
             region_ids: Optional region filter list. If provided, only matching
                 regions are included in report outputs.
+            search_roots: Optional results roots or subfolders to scan.
 
         """
-        if not self.results_root.exists():
+        if not self.results_root.exists() and not search_roots:
             _logger.info("No results directory found.")
             return
 
+        roots = search_roots or [self.results_root]
+        missing_roots = [root for root in roots if not root.exists()]
+        if missing_roots:
+            missing_text = ", ".join(str(root) for root in missing_roots)
+            raise FileNotFoundError(f"Results directory not found: {missing_text}")
+
+        summary_path = self.summary_md
+        display_root = self.results_root
+        if len(roots) == 1:
+            summary_path = roots[0] / "report.md"
+            display_root = roots[0]
+
         metrics_list: List[Dict[str, Any]] = []
-        for exp_dir in sorted(self.results_root.iterdir()):
-            if not exp_dir.is_dir():
-                continue
-            metrics = self.get_experiment_metrics(exp_dir)
-            if metrics is None:
-                continue
-            region_id = metrics.get("RegionID")
-            if region_ids and region_id not in region_ids:
-                continue
-            metrics_list.append(metrics)
+        seen_dirs = set()
+        for root in roots:
+            for exp_dir in self._discover_experiment_dirs(root):
+                if exp_dir in seen_dirs:
+                    continue
+                seen_dirs.add(exp_dir)
+                metrics = self.get_experiment_metrics(
+                    exp_dir, display_root=display_root
+                )
+                if metrics is None:
+                    continue
+                region_id = metrics.get("RegionID")
+                if region_ids and region_id not in region_ids:
+                    continue
+                metrics_list.append(metrics)
 
         if not metrics_list:
             _logger.info("No valid results found to summarize.")
@@ -412,7 +482,7 @@ class ReportGenerator:
             na_position="last",
         )
         md_lines = self._build_markdown(metrics_list)
-        self.summary_md.write_text("\n".join(md_lines).strip() + "\n", encoding="utf-8")
+        summary_path.write_text("\n".join(md_lines).strip() + "\n", encoding="utf-8")
 
         display_cols = [
             "RegionID",
@@ -430,4 +500,4 @@ class ReportGenerator:
             "MeanMatchTimeS",
         ]
         _logger.info("\n" + summary_df[display_cols].to_string(index=False))
-        _logger.info(f"\nMarkdown report saved: {self.summary_md}")
+        _logger.info(f"\nMarkdown report saved: {summary_path}")
