@@ -1,11 +1,12 @@
 # Aerial Positioning: Visual Positioning for Aerial Imagery Using Pre-existing Satellite Images
-*Developed as a Capstone Project | B.Sc. in Astronautical Engineering*
 
 This repository presents a vision-based positioning process for estimating the horizontal position (latitude and longitude) of an aerial platform in GNSS-denied environments. Given only an initial starting position, the method matches onboard imagery against pre-existing satellite map tiles to produce coordinate estimates purely from visual information. To improve cross-view consistency, the process uses aerial vehicle attitude information to rectify oblique camera views into a nadir-oriented perspective aligned with satellite imagery.
 
+> **Note:** A companion paper for this work is currently being prepared and is planned for release in the near term. The detailed benchmark analysis, supplementary figures, and extended result tables will be shared alongside the paper. Also, you can watch the per-region evaluation outputs with the MINIMA matcher from [this playlist](https://www.youtube.com/playlist?list=PL1iuXNnG1vnMdXU7XmagU-2MMkmULcEcU).
+
 <p align="center">
   <a href="https://www.youtube.com/playlist?list=PL1iuXNnG1vnMdXU7XmagU-2MMkmULcEcU">
-    <img src="./assets/showcase.gif" alt="Region 01 evaluation match example">
+    <img src="./assets/showcase.gif" alt="MINIMA Region 03 Google evaluation match example">
   </a>
 </p>
 
@@ -73,7 +74,7 @@ python runner.py --dataset-eval 11 --zoom-levels 16 --tile-provider google esri
 python runner.py --dataset-prepare 1 2 5 11 --tile-provider google esri --map-margin 5000
 
 # Aggregate reports
-python runner.py --eval-results all
+python runner.py --eval-result all
 ```
 
 `--zoom-levels` is optional for both prepare and eval. If omitted, `runner.py` computes an optimal zoom from each region's median altitude and latitude. During eval, if that zoom is not available on disk, the nearest downloaded zoom is used.
@@ -166,9 +167,9 @@ $$
 
 and the final zoom is chosen as the larger of $z_{\mathrm{base}}$ and $z_{\mathrm{detail}}$, then clamped to the configured zoom range.
 
-To avoid overly coarse map detail at high altitude, a detail floor is applied (`min_detail_mpp=2.0`, activated for altitude `>= 1500 m`). In the current full evaluation, selected zoom levels are:
+To avoid overly coarse map detail at high altitude, a detail floor is applied (`min_detail_mpp=2.0`, activated for altitude `>= 1500 m`). In the current full evaluation, automatic selected zoom levels are:
 
-| Region IDs | Selected Zoom |
+| Region IDs | Auto Selected Zoom |
 | :--- | :---: |
 | 01, 02, 03, 04, 08, 09 | 18 |
 | 05, 06, 07, 10 | 17 |
@@ -243,100 +244,51 @@ Dense or semi-dense correspondences are computed using the MINIMA framework (Sup
 
 ## Evaluation Setup
 
-The results reported below correspond to the documented evaluation setup used for this repository snapshot:
+The benchmark summary below focuses on the three deep matchers: `GIM`, `LightGlue`, and `MINIMA`.
 
-*   **Matcher:** MINIMA (SuperPoint + LightGlue).
-*   **Tile Providers:** Google and ESRI (same region set evaluated on both).
-*   **Preprocessing:** Resize + gimbal warp (Phi1 as yaw, estimated K from image dims).
-*   **Zoom Policy:** Auto zoom enabled (`--zoom-levels` omitted during eval).
-*   **Map Context:** Adaptive `N x N` grid stitching (`coverage_factor=2.0`, `max_grid=3`).
-*   **Temporal Sampling:** `sample_interval=1` (all frames evaluated).
-*   **Search Strategy:** Synthetic INS drift-guided skip-and-grow with a 500 m starting radius and logged fallback radii reported per experiment in the stored CSV outputs.
-*   **Geometric Acceptance:** `min_inliers_for_success=50`.
+*   **Excluded from comparison:** `ORB` is omitted because its performance is very weak in this domain, and `LoFTR` is omitted from the comparative plots and tables because it produces systematic false-positive matches with kilometer-scale localization errors.
+*   **Tile providers:** Google and ESRI.
+*   **Zoom policy:** Automatic zoom selection.
+*   **Map context:** Adaptive `N x N` grid stitching.
+*   **Geometric acceptance:** A minimum of 50 inliers is required for a match.
 
 ## Results
 
-### Overall Results
+### Summary Findings
 
-*   **Evaluation scope:** 22 experiments across 11 regions with 2 map providers.
-*   **Overall success rate:** 77.69% across all 13,544 evaluated frames.
-*   **Provider comparison:** Google has higher success in 8 regions, ESRI in 2 regions, and 1 region is tied.
-*   **Best performance:** Region 03 and Region 04 reach 100% success with Google.
-*   **Most difficult cases:** Region 07 fails for both providers; Region 10 remains low on both.
-*   **Dataset caveat (Region 07):** Satellite-image generation for Region 07 produced errors, and the most likely cause is incorrect GT coordinates in the original dataset metadata.
+*   **Evaluation scope:** The comparison covers `66` experiments = `3` matchers x `11` regions x `2` providers, corresponding to **40,632 per-frame evaluations**.
+*   **Best matcher:** `MINIMA` achieves the strongest overall trade-off with **77.69%** pooled success and **20.01 m** pooled median error.
+*   **Best alternative:** `GIM` is the strongest non-MINIMA baseline and remains the best  model in `Zhuxi-Google`, `Shandan-ESRI`, and `Shandan-Google`.
+*   **Provider trend:** Google improves pooled  recall from **68.62%** to **72.01%** while changing pooled median error by only **+0.07 m**.
+*   **LoFTR outcome:** LoFTR is excluded from the comparison because it yields systematic false positives and kilometer-scale localization errors despite its nominal `100%` success rate.
 
-You can watch the per-region evaluation outputs from this playlist:
-[Dataset Results (Youtube)](https://www.youtube.com/playlist?list=PL1iuXNnG1vnMdXU7XmagU-2MMkmULcEcU)
+### Overall Matcher Performance
 
-### Full Evaluation — All Regions (11 regions x 2 providers)
+| Matcher | Experiments | Successful Frames | Success Rate (%) | Mean Error (m) | Median Error (m) | P90 Error (m) | Mean Inliers |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| GIM | 22 | 9612/13544 | 70.97% | 26.41 | 20.19 | 43.54 | 322.3 |
+| LightGlue | 22 | 8437/13544 | 62.29% | 23.80 | 20.06 | 42.46 | 298.1 |
+| MINIMA | 22 | 10522/13544 | 77.69% | 25.52 | 20.01 | 41.88 | 287.1 |
 
-The table below includes every evaluated region (01-11) for both tile providers.
+### Provider-Wise Performance Summary
 
-| Region (ID) | Zoom | ESRI Success | Google Success | ESRI Median Err (m) | Google Median Err (m) | Higher Success Rate |
-| :--- | :---: | :---: | :---: | ---: | ---: | :--- |
-| Changjiang_20 (01) | 18 | 74.79% (611/817) | 73.44% (600/817) | 19.46 | 19.05 | ESRI |
-| Changjiang_23 (02) | 18 | 65.64% (703/1071) | 66.20% (709/1071) | 15.30 | 15.22 | Google |
-| Taizhou_1 (03) | 18 | 98.44% (756/768) | 100.00% (768/768) | 17.72 | 17.72 | Google |
-| Taizhou_6 (04) | 18 | 99.73% (736/738) | 100.00% (738/738) | 31.36 | 31.35 | Google |
-| Yunnan (05) | 17 | 49.68% (235/473) | 64.90% (307/473) | 23.61 | 23.97 | Google |
-| Zhuxi (06) | 17 | 48.26% (166/344) | 70.06% (241/344) | 20.56 | 20.64 | Google |
-| Donghuayuan (07) | 17 | 0.00% (0/30) | 0.00% (0/30) | N/A | N/A | N/A |
-| Huzhou_3_08 (08) | 18 | 65.15% (673/1033) | 65.92% (681/1033) | 17.36 | 17.59 | Google |
-| Huzhou_3_09 (09) | 18 | 88.25% (676/766) | 90.34% (692/766) | 19.74 | 19.47 | Google |
-| Huailai (10) | 17 | 28.47% (41/144) | 26.39% (38/144) | 19.11 | 19.36 | ESRI |
-| Shandan (11) | 16 | 96.94% (570/588) | 98.81% (581/588) | 24.41 | 24.65 | Google |
+| Matcher | ESRI Success Rate (%) | Google Success Rate (%) | Delta (pp) | ESRI Median Error (m) | Google Median Error (m) | Delta (m) |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: |
+| GIM | 69.06% | 72.87% | +3.81 | 20.09 m | 20.29 m | +0.19 |
+| LightGlue | 60.50% | 64.09% | +3.59 | 20.00 m | 20.09 m | +0.10 |
+| MINIMA | 76.30% | 79.08% | +2.78 | 20.01 m | 20.00 m | -0.01 |
 
-### Tile Provider Comparison
+<p align="center">
+  <strong>Provider-by-Matcher Success Rate Matrix</strong><br><br>
+  <img src="assets/matcher_provider_success_matrix.png" alt="matcher by provider success rate ablation matrix" width="75%">
+</p>
 
-The table below reports **pooled per-frame metrics** for the two tile providers.
+<p align="center">
+  <strong>Best Matcher by Region and Provider</strong><br><br>
+  <img src="assets/region_provider_winner_matrix.png" alt="winner matrix by region and provider" width="75%">
+</p>
 
-| Provider | Exps. | Success | Success Rate | Mean Err (m) | Median Err (m) | P90 Err (m) | Mean Inliers | Match Time (s) | Cand. Maps |
-| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| esri | 11 | 5167 | 76.30% | 24.88 | 20.01 | 41.47 | 275.0 | 0.046 | 55.5 |
-| google | 11 | 5355 | 79.08% | 26.13 | 20.00 | 42.34 | 298.8 | 0.048 | 63.8 |
-
-### Summary
-
-The publication-style figures below summarize the valid-region results. Region 07 is excluded from the plots because both providers fail completely there and the sequence is already discussed separately above.
-
-<table>
-  <tr>
-    <td valign="top" width="70%">
-      <strong>Success Rate by Region</strong><br><br>
-      <img src="assets/success_rate_by_region.png" alt="Success rate by region">
-    </td>
-    <td valign="center" width="30%">
-      Google reaches the higher success rate in 8 of the 10 plotted regions. The strongest gains appear in Regions 05 and 06, while ESRI keeps a slight edge in Regions 01 and 10.
-    </td>
-  </tr>
-  <tr>
-    <td valign="top" width="70%">
-      <strong>Mean Error with Std by Region</strong><br><br>
-      <img src="assets/mean_std_error_by_region.png" alt="Mean error with standard deviation by region">
-    </td>
-    <td valign="center" width="30%">
-      This view emphasizes dispersion instead of only central tendency. Region 06 stands out with very large variance for both providers, indicating rare but severe outliers among otherwise successful matches.
-    </td>
-  </tr>
-  <tr>
-    <td valign="top" width="70%">
-      <strong>Median Error by Region</strong><br><br>
-      <img src="assets/median_error_by_region.png" alt="Median error by region">
-    </td>
-    <td valign="center" width="30%">
-      Median error remains far more stable than mean error, mostly between 15 m and 25 m, with Region 04 as the main exception near 31 m. This suggests that provider choice affects recall more than typical post-match accuracy.
-    </td>
-  </tr>
-</table>
-
-### Observations
-
-*   **Overall comparison:** Google has higher aggregate success rate (79.08% vs 76.30%), while median error is very close between providers.
-*   **Strong regions:** Regions 03, 04, and 11 remain near-perfect (>96% on both providers).
-*   **Challenging regions:** Region 07 is currently unresolved (0% for both), and Region 10 remains low-success on both providers.
-*   **Region 07 status:** The current stored evaluation snapshot does not obtain any successful matches there for either provider (0/30 on both).
-*   **Provider-sensitive regions:** Regions 05 and 06 show large gains with Google in success rate.
-*   **Low-texture failure mode:** Sea, river, and very rural scenes remain plausible failure cases because the matcher may not recover enough reliable visual features there.
+These summary views show that MINIMA dominates most region-provider cells, while Google consistently improves recall for all three matchers with only negligible changes in median localization error.
 
 ## Limitations and Future Work
 
