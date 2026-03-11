@@ -16,6 +16,7 @@ This repository presents a visual positioning pipeline for estimating the horizo
 - [Evaluation Setup](#evaluation-setup)
 - [Results](#results)
 - [Limitations and Future Work](#limitations-and-future-work)
+- [License](#license)
 - [References & Acknowledgments](#references--acknowledgments)
 
 ## Environment Setup and Usage
@@ -307,6 +308,10 @@ These summary views show that `MINIMA` dominates most region-provider cells, whi
 *   **Full EKF Integration:** Tightly/loosely coupled fusion of visual position fixes with IMU and barometric measurements in a unified state estimator.
 *   **DTED-Assisted 3D Geolocation (PnP):** Incorporate DTED/elevation priors and solve a Perspective-n-Point (PnP) problem to estimate full geodetic state (`latitude`, `longitude`, `altitude`) instead of horizontal position only.
 *   **Model Optimization and Edge Deployment:** Quantization/pruning and export to ONNX/TensorRT for embedded real-time deployment.
+
+## License
+
+This project is licensed under the MIT License.
 
 ## References & Acknowledgments
 1. **[UAV-VisLoc Dataset](https://github.com/IntelliSensing/UAV-VisLoc):** Dataset source.
