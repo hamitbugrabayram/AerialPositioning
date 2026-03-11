@@ -1,8 +1,8 @@
 # Aerial Positioning: Visual Positioning for Aerial Imagery Using Pre-existing Satellite Images
 
-This repository presents a vision-based positioning process for estimating the horizontal position (latitude and longitude) of an aerial platform in GNSS-denied environments. Given only an initial starting position, the method matches onboard imagery against pre-existing satellite map tiles to produce coordinate estimates purely from visual information. To improve cross-view consistency, the process uses aerial vehicle attitude information to rectify oblique camera views into a nadir-oriented perspective aligned with satellite imagery.
+This repository presents a visual positioning pipeline for estimating the horizontal position (latitude and longitude) of an aerial platform in GNSS-denied environments. Given an initial position estimate, the method matches onboard imagery against preexisting satellite map tiles to recover coordinates from visual cues alone. To improve cross-view consistency, the pipeline uses platform attitude information to rectify oblique camera views into a nadir-oriented perspective aligned with the satellite imagery.
 
-> **Note:** A companion paper for this work is currently being prepared and is planned for release in the near term. The detailed benchmark analysis, supplementary figures, and extended result tables will be shared alongside the paper. Also, you can watch the per-region evaluation outputs with the MINIMA matcher from [this playlist](https://www.youtube.com/playlist?list=PL1iuXNnG1vnMdXU7XmagU-2MMkmULcEcU).
+> **Note:** A companion paper is currently in preparation. Detailed benchmark analysis, supplementary figures, and extended result tables will be released alongside the paper. Per-region evaluation videos with the MINIMA matcher are available in [this playlist](https://www.youtube.com/playlist?list=PL1iuXNnG1vnMdXU7XmagU-2MMkmULcEcU).
 
 <p align="center">
   <a href="https://www.youtube.com/playlist?list=PL1iuXNnG1vnMdXU7XmagU-2MMkmULcEcU">
@@ -22,7 +22,7 @@ This repository presents a vision-based positioning process for estimating the h
 
 ### 1. Environment Setup
 
-Use Python 3.9 with dependencies from `requirements.txt`. For complete matcher support, clone with `--recursive` because the repository includes matcher submodules. The current default configuration in `config.yaml` uses the `minima` matcher, while the codebase also supports `lightglue`, `loftr`, and `gim`.
+Use Python 3.9 with the dependencies listed in `requirements.txt`. For full matcher support, clone with `--recursive` because the repository includes matcher submodules. The default root configuration in `config.yaml` uses the `minima` matcher, while the codebase also supports `gim`, `lightglue`, `loftr`, and `orb`.
 
 ```bash
 git clone https://github.com/hamitbugrabayram/AerialPositioning.git
@@ -33,7 +33,7 @@ conda activate aerial-pos
 pip install -r requirements.txt
 ```
 
-Download the required matcher weights into the paths referenced under `matcher_weights` in `config.yaml` before running evaluation.
+For `gim`, `lightglue`, `loftr`, and `minima`, download the required weights into the paths referenced under `matcher_weights` in `config.yaml` before running evaluation. The `orb` baseline does not require pretrained weights.
 
 ### 2. Dataset and Directory Layout
 
@@ -74,10 +74,10 @@ python runner.py --dataset-eval 11 --zoom-levels 16 --tile-provider google esri
 python runner.py --dataset-prepare 1 2 5 11 --tile-provider google esri --map-margin 5000
 
 # Aggregate reports
-python runner.py --eval-result all
+python runner.py --eval-results all
 ```
 
-`--zoom-levels` is optional for both prepare and eval. If omitted, `runner.py` computes an optimal zoom from each region's median altitude and latitude. During eval, if that zoom is not available on disk, the nearest downloaded zoom is used.
+`--zoom-levels` is optional for both prepare and eval. If omitted, `runner.py` selects an operating zoom from each region's median altitude and latitude. During evaluation, if that zoom is not available on disk, the nearest downloaded zoom is used.
 
 ## Methodology
 
@@ -86,10 +86,10 @@ python runner.py --eval-result all
 *   **Query Preprocessing:** Drone images are resized and perspective-warped to a nadir, north-oriented view using only onboard attitude/gimbal telemetry (roll, pitch, yaw).
 *   **Adaptive Tile Stitching:** Neighbouring satellite tiles are composed into an `N x N` grid based on barometric altitude and zoom level so the reference image covers the drone's estimated ground footprint.
 *   **Synthetic INS Drift-Guided Adaptive Search:** A synthetic INS trajectory propagates the search center along the drone's trajectory using GT-derived displacement vectors as a proxy for IMU dead-reckoning. Each frame is tried once; on failure it is skipped and the search radius grows according to the configured penalty; on success the synthetic INS snaps to the visual fix and the radius resets.
-*   **Deep Matching and Geometric Validation:** Transformer-based correspondences are validated through RANSAC and geometric plausibility constraints.
+*   **Feature Matching and Geometric Validation:** Correspondences from the selected matcher backend are evaluated with RANSAC and geometric plausibility constraints.
 
 ### 1. Offline Tile Retrieval
-Satellite maps are downloaded offline prior to execution. A decoupled tile retrieval engine supports multiple providers (ESRI, Google), enabling high-resolution tiles for the region of interest to be cached in advance and served without live network access during positioning.
+Satellite maps are downloaded before execution. A decoupled tile retrieval engine supports multiple providers (ESRI, Google), enabling high-resolution tiles for the region of interest to be cached in advance and served without live network access during positioning.
 
 ### 2. Query Preprocessing (Perspective Rectification)
 Oblique UAV imagery is rectified to a nadir (top-down), north-facing view to establish geometric comparability with ortho-rectified satellite tiles.
@@ -123,7 +123,15 @@ $$
 \mathbf{H}_{\mathrm{warp}} = \mathbf{K}\,\mathbf{R}_{\mathrm{current}}^{\top}\,\mathbf{R}_{\mathrm{nadir}}\,\mathbf{K}^{-1}.
 $$
 
-Here, $\mathbf{R}_{\mathrm{current}}$ is formed from the measured gimbal Euler angles, while $\mathbf{R}_{\mathrm{nadir}}$ denotes the target nadir-facing orientation with `pitch = -90°`, `yaw = 0°`, and `roll = 0°`.
+The rotation terms are
+
+$$
+\mathbf{R}_{\mathrm{current}} = \mathbf{R}(\text{measured gimbal Euler angles}),
+$$
+
+$$
+\mathbf{R}_{\mathrm{nadir}} = \mathbf{R}(\text{yaw}=0^\circ,\ \text{pitch}=-90^\circ,\ \text{roll}=0^\circ).
+$$
 
 ### 3. Adaptive Tile Stitching
 A single `256 x 256` satellite tile may not cover the drone's full field of view, especially at high altitudes. The engine computes an adaptive grid size from:
@@ -146,9 +154,9 @@ n = \left\lceil \frac{h\,c}{t(\phi, z)} \right\rceil,
 g = \min\bigl(g_{\max}, \max(1, n)\bigr).
 $$
 
-In the implementation, an even value is promoted to the next odd value so the stitched map stays centered on the reference tile. In practice, `max_grid` is configured as an odd integer (current root config: `3`; fallback default: `5`). Here, $g$ is the grid dimension in tiles, $h$ is the barometric altitude, $c$ is the coverage factor, $\phi$ is latitude, and $z$ is zoom level.
+In the implementation, even values are promoted to the next odd integer so the stitched map remains centered on the reference tile. In the current root configuration, `max_grid` is `3` (fallback default: `5`). Here, $g$ is the grid dimension in tiles, $h$ is the barometric altitude, $c$ is the coverage factor, $\phi$ is latitude, and $z$ is zoom level.
 
-With `max_grid=3`, the composite is `768 x 768` px (`3 x 3` tiles), which matches the matcher's internal resize target and preserves detail. Missing edge tiles are filled with neutral gray.
+With `max_grid=3`, the composite is `768 x 768` px (`3 x 3` tiles), which aligns with the standard resize target used in the benchmark and preserves detail. Missing edge tiles are filled with neutral gray.
 
 ### 4. Automatic Zoom Selection
 When `--zoom-levels` is omitted, zoom is selected automatically with:
@@ -167,7 +175,7 @@ $$
 
 and the final zoom is chosen as the larger of $z_{\mathrm{base}}$ and $z_{\mathrm{detail}}$, then clamped to the configured zoom range.
 
-To avoid overly coarse map detail at high altitude, a detail floor is applied (`min_detail_mpp=2.0`, activated for altitude `>= 1500 m`). In the current full evaluation, automatic selected zoom levels are:
+To avoid overly coarse map detail at high altitude, a detail floor is applied (`min_detail_mpp=2.0`, activated for altitude `>= 1500 m`). In the current full evaluation, the automatically selected zoom levels are:
 
 | Region IDs | Auto Selected Zoom |
 | :--- | :---: |
@@ -177,7 +185,7 @@ To avoid overly coarse map detail at high altitude, a detail floor is applied (`
 
 ### 5. Search Strategy
 
-Two search strategies are available, selected via the `strategy` key under `adaptive_search` in `config.yaml`:
+Two search strategies are available through the `strategy` key under `adaptive_search` in `config.yaml`:
 
 #### `Synthetic INS Drift`
 
@@ -239,14 +247,13 @@ This mode does not use displacement vectors or synthetic INS drift modeling. It 
 | `synthetic_ins_noise_sigma_m` | 30 | Synthetic INS drift scale parameter |
 | `synthetic_ins_noise_max_m` | 150 | Synthetic INS drift hard cap |
 
-### 6. Deep Matching and Geometric Verification
-Dense or semi-dense correspondences are computed using the MINIMA framework (SuperPoint + LightGlue). A planar homography $\mathbf{H}$ between the query image and the reference map composite is then estimated with RANSAC. Acceptance is conditioned on a minimum inlier count together with geometric plausibility checks that reject singular, numerically unstable, or implausible transforms; this includes validating the projected query footprint area and rejecting predictions whose transformed center falls outside a relaxed map boundary.
+### 6. Matcher Backend and Geometric Verification
+Depending on the configuration, correspondences are produced with `GIM`, `LightGlue`, `LoFTR`, or the `MINIMA` pipeline; `ORB` is also available as a classical hand-crafted baseline. Regardless of the backend, a planar homography $\mathbf{H}$ between the query image and the reference map composite is then estimated with RANSAC. Acceptance is conditioned on a minimum inlier count together with geometric plausibility checks that reject singular, numerically unstable, or implausible transforms; this includes validating the projected query footprint area and rejecting predictions whose transformed center falls outside a relaxed map boundary.
 
 ## Evaluation Setup
 
-The benchmark summary below focuses on the three deep matchers: `GIM`, `LightGlue`, and `MINIMA`.
+The repository supports `GIM`, `LightGlue`, `LoFTR`, `MINIMA`, and `ORB`. The benchmark summary below reports `GIM`, `LightGlue`, and `MINIMA`; `LoFTR` is omitted because it produces systematic false-positive matches with kilometer-scale localization errors, and `ORB` is omitted because it yields too few reliable matches and successful localizations to support a meaningful comparison.
 
-*   **Excluded from comparison:** `ORB` is omitted because its performance is very weak in this domain, and `LoFTR` is omitted from the comparative plots and tables because it produces systematic false-positive matches with kilometer-scale localization errors.
 *   **Tile providers:** Google and ESRI.
 *   **Zoom policy:** Automatic zoom selection.
 *   **Map context:** Adaptive `N x N` grid stitching.
@@ -258,9 +265,8 @@ The benchmark summary below focuses on the three deep matchers: `GIM`, `LightGlu
 
 *   **Evaluation scope:** The comparison covers `66` experiments = `3` matchers x `11` regions x `2` providers, corresponding to **40,632 per-frame evaluations**.
 *   **Best matcher:** `MINIMA` achieves the strongest overall trade-off with **77.69%** pooled success and **20.01 m** pooled median error.
-*   **Best alternative:** `GIM` is the strongest non-MINIMA baseline and remains the best  model in `Zhuxi-Google`, `Shandan-ESRI`, and `Shandan-Google`.
-*   **Provider trend:** Google improves pooled  recall from **68.62%** to **72.01%** while changing pooled median error by only **+0.07 m**.
-*   **LoFTR outcome:** LoFTR is excluded from the comparison because it yields systematic false positives and kilometer-scale localization errors despite its nominal `100%` success rate.
+*   **Best alternative:** `GIM` is the strongest non-MINIMA baseline and remains the best model in `Zhuxi-Google`, `Shandan-ESRI`, and `Shandan-Google`.
+*   **Provider trend:** Google improves pooled recall from **68.62%** to **72.01%** while changing pooled median error by only **+0.07 m**.
 
 ### Overall Matcher Performance
 
@@ -288,7 +294,7 @@ The benchmark summary below focuses on the three deep matchers: `GIM`, `LightGlu
   <img src="assets/region_provider_winner_matrix.png" alt="winner matrix by region and provider" width="75%">
 </p>
 
-These summary views show that MINIMA dominates most region-provider cells, while Google consistently improves recall for all three matchers with only negligible changes in median localization error.
+These summary views show that `MINIMA` dominates most region-provider cells, while Google consistently improves recall for all three reported matchers with negligible changes in median localization error.
 
 ## Limitations and Future Work
 
@@ -306,5 +312,6 @@ These summary views show that MINIMA dominates most region-provider cells, while
 1. **[UAV-VisLoc Dataset](https://github.com/IntelliSensing/UAV-VisLoc):** Dataset source.
 2. **[WildNav](https://github.com/TIERS/wildnav):** Visual navigation concept.
 3. **[Visual Localization](https://github.com/TerboucheHacene/visual_localization):** Vision-based GNSS-free localization concept.
-4. **Deep Matchers:** [GIM](https://github.com/xuelunshen/gim), [LightGlue](https://github.com/cvg/LightGlue), [LoFTR](https://github.com/zju3dv/LoFTR), [MINIMA](https://github.com/LSXI7/MINIMA).
-5. **Satellite Imagery Providers:** ESRI World Imagery, Google Maps.
+4. **Feature Matchers:** [GIM](https://github.com/xuelunshen/gim), [LightGlue](https://github.com/cvg/LightGlue), [LoFTR](https://github.com/zju3dv/LoFTR), [MINIMA](https://github.com/LSXI7/MINIMA).
+5. **Classical Baseline:** [ORB (OpenCV)](https://docs.opencv.org/4.x/db/d95/classcv_1_1ORB.html).
+6. **Satellite Imagery Providers:** ESRI World Imagery, Google Maps.
