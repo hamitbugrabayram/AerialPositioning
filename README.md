@@ -1,7 +1,6 @@
 # Aerial Positioning: Visual Positioning for Aerial Imagery Using Pre-existing Satellite Images
 
-This repository presents a visual positioning pipeline for estimating the horizontal position (latitude and longitude) of an aerial platform in GNSS-denied environments. Given an initial position estimate, the method matches onboard imagery against preexisting satellite map tiles to recover coordinates from visual cues alone. To improve cross-view consistency, the pipeline uses platform attitude information to rectify oblique camera views into a nadir-oriented perspective aligned with the satellite imagery.
-
+This repository presents a visual positioning pipeline for estimating the horizontal position (latitude and longitude) of an aerial platform in GNSS-denied environments. Given an initial position estimate, the method matches onboard imagery with pre-existing satellite map tiles to recover geographic coordinates using visual cues alone. To improve cross-view consistency, the pipeline uses platform attitude information to rectify oblique camera views into a nadir-oriented perspective aligned with the satellite imagery.
 > **Note:** A companion paper is currently in preparation. Detailed benchmark analysis, supplementary figures, and extended result tables will be released alongside the paper. Per-region evaluation videos with the MINIMA matcher are available in [this playlist](https://www.youtube.com/playlist?list=PL1iuXNnG1vnMdXU7XmagU-2MMkmULcEcU).
 
 <p align="center">
