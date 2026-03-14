@@ -1,7 +1,7 @@
 # Aerial Positioning: Visual Positioning for Aerial Imagery Using Pre-existing Satellite Images
 
 This repository presents a visual positioning pipeline for estimating the horizontal position (latitude and longitude) of an aerial platform in GNSS-denied environments. Given an initial position estimate, the method matches onboard imagery with pre-existing satellite map tiles to recover geographic coordinates using visual cues alone. To improve cross-view consistency, the pipeline uses platform attitude information to rectify oblique camera views into a nadir-oriented perspective aligned with the satellite imagery.
-> **Note:** A companion paper is currently in preparation. Detailed benchmark analysis, supplementary figures, and extended result tables will be released alongside the paper. Per-region evaluation videos with the MINIMA matcher are available in [this playlist](https://www.youtube.com/playlist?list=PL1iuXNnG1vnMdXU7XmagU-2MMkmULcEcU).
+> **Note:** A companion paper is currently in preparation. This README summarizes the benchmark tables used in the paper, and per-region evaluation videos with the MINIMA matcher are available in [this playlist](https://www.youtube.com/playlist?list=PL1iuXNnG1vnMdXU7XmagU-2MMkmULcEcU).
 
 <p align="center">
   <a href="https://www.youtube.com/playlist?list=PL1iuXNnG1vnMdXU7XmagU-2MMkmULcEcU">
@@ -265,8 +265,9 @@ The repository supports `GIM`, `LightGlue`, `LoFTR`, `MINIMA`, and `ORB`. The be
 
 *   **Evaluation scope:** The comparison covers `66` experiments = `3` matchers x `11` regions x `2` providers, corresponding to **40,632 per-frame evaluations**.
 *   **Best matcher:** `MINIMA` achieves the strongest overall trade-off with **77.69%** pooled success and **20.01 m** pooled median error.
-*   **Best alternative:** `GIM` is the strongest non-MINIMA baseline and remains the best model in `Zhuxi-Google`, `Shandan-ESRI`, and `Shandan-Google`.
-*   **Provider trend:** Google improves pooled recall from **68.62%** to **72.01%** while changing pooled median error by only **+0.07 m**.
+*   **Best alternative:** `GIM` is the strongest non-MINIMA baseline with **70.97%** pooled success and the highest mean inlier count.
+*   **Provider trend:** Google imagery improves recall for all three principal matchers by **2.78-3.81 percentage points**, while pooled median error shifts by at most **0.19 m**.
+*   **Region-level pattern:** `MINIMA` is the pooled winner in `9/11` regions, while `GIM` is the pooled winner in `Donghuayuan` and `Shandan`.
 
 ### Overall Matcher Performance
 
@@ -284,17 +285,39 @@ The repository supports `GIM`, `LightGlue`, `LoFTR`, `MINIMA`, and `ORB`. The be
 | LightGlue | 60.50% | 64.09% | +3.59 | 20.00 m | 20.09 m | +0.10 |
 | MINIMA | 76.30% | 79.08% | +2.78 | 20.01 m | 20.00 m | -0.01 |
 
-<p align="center">
-  <strong>Provider-by-Matcher Success Rate Matrix</strong><br><br>
-  <img src="assets/matcher_provider_success_matrix.png" alt="matcher by provider success rate ablation matrix" width="75%">
-</p>
+### Regional Best Matcher Summary
 
-<p align="center">
-  <strong>Best Matcher by Region and Provider</strong><br><br>
-  <img src="assets/region_provider_winner_matrix.png" alt="winner matrix by region and provider" width="75%">
-</p>
+| Region ID | Region | Best Matcher | Best Rate (%) |
+| :--- | :--- | :---: | ---: |
+| R01 | Changjiang 20 | MINIMA | 74.11 |
+| R02 | Changjiang 23 | MINIMA | 65.92 |
+| R03 | Taizhou 1 | MINIMA | 99.22 |
+| R04 | Taizhou 6 | MINIMA | 99.86 |
+| R05 | Yunnan | MINIMA | 57.29 |
+| R06 | Zhuxi | MINIMA | 59.16 |
+| R07 | Donghuayuan | GIM | 6.67 |
+| R08 | Huzhou 3-A | MINIMA | 65.54 |
+| R09 | Huzhou 3-B | MINIMA | 89.30 |
+| R10 | Huailai | MINIMA | 27.43 |
+| R11 | Shandan | GIM | 99.40 |
 
-These summary views show that `MINIMA` dominates most region-provider cells, while Google consistently improves recall for all three reported matchers with negligible changes in median localization error.
+### Operating Regime and Winner-Margin Summary
+
+| Region ID | Regime | Winner | Margin (pp) |
+| :---: | :--- | :---: | ---: |
+| R01 | Stable | MINIMA | 2.14 |
+| R02 | Stable | MINIMA | 12.75 |
+| R03 | Saturated | MINIMA | 0.65 |
+| R04 | Saturated | MINIMA | 1.89 |
+| R05 | Challenging | MINIMA | 16.28 |
+| R06 | Challenging | MINIMA | 0.88 |
+| R07 | Failure-prone | GIM | 6.67 |
+| R08 | Stable | MINIMA | 8.42 |
+| R09 | Stable | MINIMA | 13.26 |
+| R10 | Challenging | MINIMA | 15.97 |
+| R11 | Saturated | GIM | 1.53 |
+
+Across the pooled regional benchmark, `MINIMA` dominates most operating regimes, while `GIM` remains important at the extremes: it is the only practical matcher with non-zero pooled recall in `Donghuayuan` and it narrowly leads in `Shandan`. Google imagery consistently improves the probability of obtaining a valid correction, but once geometric verification succeeds, the median localization error remains nearly unchanged across providers.
 
 ## Limitations and Future Work
 
